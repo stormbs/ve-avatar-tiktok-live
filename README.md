@@ -17,6 +17,8 @@ Trên Windows, có thể chạy `CHAY_VE_AVATAR.bat`; script sẽ cài dependenc
 
 ## Sự kiện viewer
 
+Xem [hướng dẫn kết nối TikTok LIVE Studio và TikFinity](public/CONNECT_TIKTOK_LIVE.md) để cài overlay, cấu hình webhook và chạy thử.
+
 Ứng dụng nhận sự kiện từ công cụ kết nối TikTok LIVE tương thích qua webhook. Trong demo mode, sự kiện live thật được bỏ qua; dùng các nút thử trong dashboard để xem viewer được đưa vào hàng đợi và vẽ lên overlay.
 
 ## Lưu trữ cục bộ
