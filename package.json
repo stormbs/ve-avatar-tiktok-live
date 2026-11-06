@@ -1,0 +1,18 @@
+{
+  "name": "ve-avatar-tiktok-live",
+  "version": "1.0.0",
+  "description": "Game overlay TikTok LIVE ve avatar len cuon giay 1080x1920",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test_webhook_compat.js && node test_ve_avatar_suite.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

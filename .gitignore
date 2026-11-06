@@ -1,0 +1,20 @@
+# Dependencies and local runtime state
+node_modules/
+data/*
+!data/.gitkeep
+public/assets/frames/*
+khoi-dong.log
+
+# Local editor and operating system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Local encrypted export
+ve_avatar.tfc

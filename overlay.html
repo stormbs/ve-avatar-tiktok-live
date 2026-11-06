@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080, height=1920">
+<title>Vẽ Avatar - Màn hình live</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; background: #000; overflow: hidden; }
+  #scaler { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: top left; }
+  #stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; }
+
+  /* L0: nen tinh (ban go + giay) */
+  #bg { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px;
+    background: url('assets/bg-paper.webp') 0 0 / 1080px 1920px no-repeat; z-index: 0; }
+
+  /* L1: dai giay (noi dung) — CHI dich chuyen giua cac luot in, dung yen luc in */
+  #strip { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 2; will-change: transform; }
+  #rows { position: absolute; left: 0; top: 0; width: 1080px; height: 0; }
+  .row { position: absolute; left: 0; width: 1080px; display: flex; justify-content: center; gap: 60px; }
+  .row.grid { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; gap: 30px 60px; }
+  .row.grid > :last-child:nth-child(3) { grid-column: 1 / -1; justify-self: center; }
+
+  /* 5 BAC VE: t1 avatar + ten / t2 avatar + ten + Thank you /
+     t3 khung lon ten dep + Thank you / t4 nhu t3 + hieu ung /
+     t5 nhu t4 + loi cam on/chuc ben canh anh */
+  .frame { position: relative; background: rgba(255,253,248,.97);
+    border: 3px solid #2a2a2a; border-radius: 10px; text-align: center; overflow: hidden;
+    box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+  .frame::after { content: ''; position: absolute; top: 5px; left: 50%; width: 14px; height: 14px;
+    margin-left: -7px; border-radius: 50%; z-index: 4;
+    background: radial-gradient(circle at 35% 30%, #ffe9a3, #b8860b 60%, #5e3f00);
+    box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .frame .av { margin: 0 auto; border-radius: 50%; overflow: hidden; background: #cfcfcf; }
+  .frame .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .frame .av-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    background: #9aa0a6; color: #fff; font-family: Arial, sans-serif; }
+  .fname { margin-top: 6px; color: #333; white-space: nowrap;
+    font-family: Georgia, 'Times New Roman', serif; }
+  .fname .nm { font-style: italic; padding: 0 4px; }
+  .frame .thanks-line { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: bold;
+    color: #7a1f2b; white-space: nowrap; }
+  .frame .thanks-line .heart { color: #d23c55; }
+  /* Bac 1: avatar + ten */
+  .frame.t1solo { width: 320px; height: 255px; padding: 12px 8px 6px 8px; }
+  .frame.t1solo .av { width: 192px; height: 192px; }
+  .frame.t1solo .av-fallback { font-size: 76px; }
+  .frame.t1solo .fname { font-size: 24px; }
+  .frame.t1solo .fname .heart { color: #d23c55; font-size: 20px; }
+  .frame.t1pair { width: 290px; height: 255px; padding: 16px 8px 6px 8px; }
+  .frame.t1pair .av { width: 172px; height: 172px; }
+  .frame.t1pair .av-fallback { font-size: 68px; }
+  .frame.t1pair .fname { font-size: 23px; }
+  .frame.t1pair .fname .heart { color: #d23c55; font-size: 19px; }
+  /* Bac 2: avatar + ten + Thank you, vien avatar dep */
+  .frame.t2 { width: 380px; height: 255px; padding: 10px 8px 6px 8px; }
+  .frame.t2 .av-ring { width: 178px; height: 178px; margin: 0 auto; border-radius: 50%; padding: 8px;
+    background: conic-gradient(from 200deg, #ffe9a3, #d4a017, #fff3c4, #b8860b, #ffe9a3); }
+  .frame.t2 .av-ring .av { width: 162px; height: 162px; border: 3px solid #fff; }
+  .frame.t2 .av-fallback { font-size: 64px; }
+  .frame.t2 .fname { font-size: 24px; }
+  .frame.t2 .fname .heart { color: #d23c55; font-size: 20px; }
+  .frame.t2 .thanks-line { margin-top: 2px; font-size: 20px; }
+
+  /* Bac 3: khung lon, vien ornate, ten chu dep + Thank you */
+  .frame.t3 { width: 560px; height: 370px; padding: 14px 12px 8px 12px;
+    border: 4px double #b8860b; box-shadow: inset 0 0 0 3px #fff3c4, 0 4px 14px rgba(0,0,0,.3); }
+  .frame.t3 .av-orn { position: relative; width: 248px; height: 248px; margin: 0 auto; }
+  .frame.t3 .av-orn .ring { position: absolute; border-radius: 50%; }
+  .frame.t3 .av-orn .r1 { inset: 0; background: radial-gradient(circle at 35% 30%, #ffe9a3, #d4a017 55%, #7a5200); }
+  .frame.t3 .av-orn .r2 { inset: 12px; background: radial-gradient(circle at 35% 30%, #fff3c4, #b8860b 60%, #5e3f00); }
+  .frame.t3 .av-orn .av { position: absolute; inset: 26px; width: auto; height: auto; border: 4px solid #fff3c4; }
+  .frame.t3 .av-fallback { font-size: 80px; }
+  .frame.t3 .fname { margin-top: 8px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: bold;
+    font-size: 36px; color: #7a1f2b; }
+  .frame.t3 .fname .nm { font-style: normal; }
+  .frame.t3 .fname .heart { color: #e0607e; font-size: 26px; }
+  .frame.t3 .thanks-line { margin-top: 4px; font-size: 26px; }
+  /* Bac 4: nhu bac 3 + hao quang xoay + nhip sang + ngoc */
+  .frame.t4 { width: 560px; height: 370px; padding: 14px 12px 8px 12px;
+    border: 4px double #d4a017; box-shadow: inset 0 0 0 3px #fff3c4;
+    animation: t4pulse 2.4s ease-in-out infinite; }
+  .frame.t4 .av-orn { position: relative; width: 248px; height: 248px; margin: 0 auto; }
+  .frame.t4 .halo { position: absolute; inset: -22px; border-radius: 50%; opacity: .85;
+    background: conic-gradient(from 0deg, #ffd968, #c81e3a, #ffe9a3, #d4a017, #e0607e, #ffd968);
+    filter: blur(7px); animation: t4halo 14s linear infinite; }
+  .frame.t4 .av-orn .ring { position: absolute; border-radius: 50%; }
+  .frame.t4 .av-orn .r1 { inset: 0; background: radial-gradient(circle at 35% 30%, #ffe9a3, #d4a017 55%, #7a5200); }
+  .frame.t4 .av-orn .r2 { inset: 12px; background: radial-gradient(circle at 35% 30%, #fff3c4, #b8860b 60%, #5e3f00); }
+  .frame.t4 .av-orn .av { position: absolute; inset: 26px; width: auto; height: auto;
+    border: 4px solid #fff3c4; z-index: 2; }
+  .frame.t4 .av-orn .gem { position: absolute; width: 20px; height: 20px; background: #c81e3a;
+    transform: rotate(45deg); border: 2px solid #ffe9a3; z-index: 3; }
+  .frame.t4 .av-orn .g-top { left: 114px; top: -8px; }
+  .frame.t4 .av-orn .g-bot { left: 114px; bottom: -8px; }
+  .frame.t4 .av-orn .g-left { left: -8px; top: 114px; }
+  .frame.t4 .av-orn .g-right { right: -8px; top: 114px; }
+  .frame.t4 .av-fallback { font-size: 80px; }
+  .frame.t4 .fname { margin-top: 8px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: bold;
+    font-size: 36px; color: #7a1f2b; }
+  .frame.t4 .fname .nm { font-style: normal; }
+  .frame.t4 .fname .heart { color: #e0607e; font-size: 26px; }
+  .frame.t4 .thanks-line { margin-top: 4px; font-size: 26px; }
+  @keyframes t4halo { to { transform: rotate(360deg); } }
+  @keyframes t4pulse {
+    0%, 100% { box-shadow: inset 0 0 0 3px #fff3c4, 0 0 0 0 rgba(212,160,23,.5); }
+    50% { box-shadow: inset 0 0 0 3px #fff3c4, 0 0 26px 6px rgba(212,160,23,.55); }
+  }
+  /* Bac 5: nhu bac 4 + loi cam on/chuc ben canh anh */
+  .frame.t5 { width: 800px; height: 340px; padding: 14px 22px; display: flex; gap: 22px;
+    align-items: center; text-align: center;
+    border: 4px double #c81e3a; box-shadow: inset 0 0 0 3px #ffe3e8;
+    animation: t5pulse 2.4s ease-in-out infinite; }
+  .frame.t5 .t5-left { width: 300px; flex: 0 0 300px; }
+  .frame.t5 .av-orn { position: relative; width: 248px; height: 248px; margin: 0 auto; }
+  .frame.t5 .halo { position: absolute; inset: -22px; border-radius: 50%; opacity: .85;
+    background: conic-gradient(from 0deg, #ffd968, #c81e3a, #ffe9a3, #d4a017, #e0607e, #ffd968);
+    filter: blur(7px); animation: t4halo 14s linear infinite; }
+  .frame.t5 .av-orn .ring { position: absolute; border-radius: 50%; }
+  .frame.t5 .av-orn .r1 { inset: 0; background: radial-gradient(circle at 35% 30%, #ffe9a3, #d4a017 55%, #7a5200); }
+  .frame.t5 .av-orn .r2 { inset: 12px; background: radial-gradient(circle at 35% 30%, #fff3c4, #b8860b 60%, #5e3f00); }
+  .frame.t5 .av-orn .av { position: absolute; inset: 26px; width: auto; height: auto;
+    border: 4px solid #fff3c4; z-index: 2; }
+  .frame.t5 .av-orn .gem { position: absolute; width: 20px; height: 20px; background: #c81e3a;
+    transform: rotate(45deg); border: 2px solid #ffe9a3; z-index: 3; }
+  .frame.t5 .av-orn .g-top { left: 114px; top: -8px; }
+  .frame.t5 .av-orn .g-bot { left: 114px; bottom: -8px; }
+  .frame.t5 .av-orn .g-left { left: -8px; top: 114px; }
+  .frame.t5 .av-orn .g-right { right: -8px; top: 114px; }
+  .frame.t5 .av-fallback { font-size: 80px; }
+  .frame.t5 .fname { margin-top: 8px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: bold;
+    font-size: 32px; color: #7a1f2b; }
+  .frame.t5 .fname .nm { font-style: normal; }
+  .frame.t5 .fname .heart { color: #e0607e; font-size: 24px; }
+  .frame.t5 .t5-side { flex: 1; min-width: 0; text-align: left; }
+  .frame.t5 .thanks-line { font-size: 36px; }
+  .frame.t5 .thanks-vi { margin-top: 6px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: bold;
+    font-size: 30px; color: #7a1f2b; }
+  .frame.t5 .wish-line { margin-top: 8px; font-size: 24px; font-style: italic; line-height: 1.25; color: #5b3a00; }
+  @keyframes t5pulse {
+    0%, 100% { box-shadow: inset 0 0 0 3px #ffe3e8, 0 0 0 0 rgba(200,30,58,.45); }
+    50% { box-shadow: inset 0 0 0 3px #ffe3e8, 0 0 26px 6px rgba(200,30,58,.5); }
+  }
+  /* Khung custom do chu live thiet ke: anh PNG de trong vong tron cho avatar.
+     Avatar nam DUOI, anh khung phu len tren (vong tron trong suot de lo avatar). */
+  .frame.custom { padding: 0; }
+  .frame.custom::after { display: none; }
+  .frame.custom .av { position: absolute; left: 50%; transform: translateX(-50%); z-index: 1; }
+  .frame.custom .frame-art { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; z-index: 2; pointer-events: none; }
+  .frame.custom .fname, .frame.custom .thanks-line { position: absolute; left: 0; right: 0; z-index: 3; margin: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .frame.t4, .frame.t4 .halo, .frame.t5, .frame.t5 .halo { animation: none; }
+  }
+
+  /* Dau trang: nen nau am (khong den xi) + chi vang doi */
+  #topband { position: absolute; left: 0; top: 0; width: 1080px; height: 300px; z-index: 9;
+    background: radial-gradient(ellipse 120% 130% at 50% -20%, #3a2110 0%, #241307 55%, #120a04 100%);
+    border-bottom: 3px solid #c9a86a;
+    box-shadow: 0 1px 0 #6b4d1f, 0 4px 12px rgba(0,0,0,.5); }
+  #curlbed { position: absolute; left: 0; top: 1460px; width: 1080px; height: 460px; z-index: 5; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(29,16,6,0) 0%, rgba(29,16,6,0) 30%, #c9a86a 30%, #c9a86a 31.5%, #1d1006 31.5%, #2a1a0c 100%); }
+
+  /* L2: gian ray — 2 rod doc tinh + thanh ngang chay doc + dau may chay ngang */
+  #rods { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 6; pointer-events: none; }
+  #rods .rod { position: absolute; top: 300px; bottom: 0; width: 26px;
+    background: linear-gradient(to right, #5a5f66, #d7dce2 45%, #f4f7f9 50%, #d7dce2 55%, #4a4e54); }
+  #rods .rod.left { left: 30px; }
+  #rods .rod.right { right: 30px; }
+  #rods .mount { position: absolute; top: 300px; width: 62px; height: 64px;
+    background: linear-gradient(to bottom, #3c4046, #23262b); border-radius: 0 0 8px 8px; }
+  #rods .mount.left { left: 12px; }
+  #rods .mount.right { right: 12px; }
+  #bar { position: absolute; left: 8px; top: 0; width: 1064px; height: 70px; z-index: 8; will-change: transform;
+    background: url('assets/rail.webp') 0 50% / 1064px 70px no-repeat; }
+  #bar .car { position: absolute; top: -12px; width: 66px; height: 94px; border-radius: 6px;
+    background: linear-gradient(to bottom, #9aa1a8, #5f666e 55%, #33373d); box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+  #bar .car.left { left: 6px; }
+  #bar .car.right { right: 6px; }
+  #head { position: absolute; top: 2px; left: 501px; width: 78px; height: 62px; border-radius: 5px;
+    background: linear-gradient(to bottom, #3a4a63 0%, #1b2740 45%, #0d1526 100%);
+    box-shadow: 0 0 0 2px #05080f, 0 4px 10px rgba(0,0,0,.55), inset 0 6px 8px rgba(255,255,255,.35); }
+  #head::after { content: ''; position: absolute; left: 50%; bottom: -8px; width: 34px; height: 10px;
+    margin-left: -17px; background: #05080f; border-radius: 0 0 4px 4px; }
+
+  /* Tieu de + thuong hieu + 2 dai thong bao tren */
+  #header { position: absolute; left: 0; top: 0; width: 1080px; z-index: 10; pointer-events: none; }
+  #title { margin-top: 148px; text-align: center; color: #ffe9bd; font-size: 60px;
+    font-family: Georgia, 'Times New Roman', serif; font-weight: bold; letter-spacing: 1px;
+    text-shadow: 0 2px 0 #5a3c10, 0 4px 14px rgba(0,0,0,.7); }
+  #brand { position: absolute; left: 40px; top: 230px; color: #c9a86a; font-size: 29px;
+    font-family: Arial, sans-serif; font-weight: bold; letter-spacing: 3px; }
+  #brand { text-shadow: 0 0 18px rgba(201,168,106,.35); }
+  #brand::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 12px;
+    background: #ffe9a3; transform: rotate(45deg) translateY(-2px); box-shadow: 0 0 8px rgba(255,233,163,.6); }
+  #tagline { position: absolute; left: 40px; top: 264px; color: #a08c66; font-size: 21px;
+    font-family: Georgia, 'Times New Roman', serif; font-style: italic; letter-spacing: 1px; }
+  #event-band { position: absolute; left: 0; top: 16px; width: 1080px; z-index: 11; text-align: center; pointer-events: none; }
+  #event-text { display: inline-block; max-width: 980px; background: rgba(24,14,7,.94); color: #ffe9bd;
+    border: 2px solid #c9a86a; font-family: Georgia, 'Times New Roman', serif; font-size: 30px;
+    padding: 8px 30px; border-radius: 26px; opacity: 0; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  #notify-band { position: absolute; left: 0; top: 86px; width: 1080px; z-index: 11; text-align: center; pointer-events: none; }
+  #notify-text { display: inline-block; max-width: 980px; background: rgba(24,14,7,.94); color: #ffe9bd;
+    border: 2px solid #c9a86a; font-family: Georgia, 'Times New Roman', serif; font-size: 27px;
+    padding: 7px 30px; border-radius: 26px; opacity: 0; transition: opacity .4s ease;
+    box-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  #proto-warn { display: none; position: absolute; left: 90px; top: 700px; width: 900px; z-index: 50;
+    background: #b00020; color: #fff; font-family: Arial, sans-serif; font-size: 34px; text-align: center;
+    padding: 24px; border-radius: 12px; }
+  /* Bang hang cho duoi: lap khoang den, cho biet ai sap duoc ve */
+  #queue-panel { position: absolute; left: 90px; top: 1650px; width: 900px; z-index: 10; pointer-events: none;
+    background: rgba(20,12,6,.9); border: 2px solid #c9a86a; border-radius: 14px; padding: 10px 22px 14px 22px;
+    font-family: Georgia, 'Times New Roman', serif; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
+  #queue-title { color: #c9a86a; font-size: 25px; letter-spacing: 3px; text-align: center; margin-bottom: 4px; }
+  #queue-names { color: #ffe9bd; font-size: 27px; line-height: 1.55; text-align: center; }
+  #queue-panel.empty #queue-names { color: #a08c66; font-style: italic; font-size: 24px; }
+  #voice-warn { display: none; position: absolute; left: 140px; top: 640px; width: 800px; z-index: 50;
+    background: #4d1500; border: 2px solid #ff6b00; color: #ffd9c2; font-family: Arial, sans-serif;
+    font-size: 24px; text-align: center; padding: 14px 20px; border-radius: 12px; }
+  /* Nut mo khoa tieng: trinh duyet doi bam 1 lan moi cho phat am thanh */
+  #audio-unlock { display: none; position: absolute; left: 240px; top: 1552px; width: 600px; z-index: 60;
+    background: #0e5c46; border: 2px solid #7dff9e; color: #fff; font-family: Arial, sans-serif;
+    font-size: 26px; font-weight: bold; text-align: center; padding: 12px 20px; border-radius: 14px;
+    cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,.6); }
+  /* Den bao dang doc: sang moi khi voice cat tieng */
+  #speak-badge { position: absolute; right: 70px; top: 318px; z-index: 11; pointer-events: none;
+    background: rgba(20,12,6,.9); border: 2px solid #c9a86a; color: #ffe9a3;
+    font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; letter-spacing: 1px;
+    padding: 6px 18px; border-radius: 20px; opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    #notify-text { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="scaler"><div id="stage">
+  <div id="bg"></div>
+  <div id="strip"><div id="rows"></div></div>
+  <div id="curlbed"></div>
+  <div id="rods"><div class="rod left"></div><div class="rod right"></div><div class="mount left"></div><div class="mount right"></div></div>
+  <div id="bar"><div class="car left"></div><div class="car right"></div><div id="head"></div></div>
+  <div id="topband"></div>
+  <div id="header"><div id="title">Tôi vẽ avatar tặng bạn</div><div id="brand">VẼ AVATAR TRỰC TIẾP</div><div id="tagline">Mỗi tương tác — một bức vẽ</div></div>
+  <div id="speak-badge">🔊 ĐANG ĐỌC</div>
+  <div id="audio-unlock">🔊 BẤM VÀO ĐÂY 1 LẦN ĐỂ BẬT TIẾNG OVERLAY</div>
+  <div id="event-band"><div id="event-text"></div></div>
+  <div id="notify-band"><div id="notify-text"></div></div>
+  <div id="queue-panel" class="empty"><div id="queue-title">SẮP ĐƯỢC VẼ</div><div id="queue-names">Chưa có ai chờ — tặng quà, thả tim hoặc bình luận để lên khung!</div></div>
+  <div id="voice-warn">CHƯA CÓ GIỌNG ĐỌC TIẾNG VIỆT — Đang đọc bằng giọng mặc định. Hãy cài giọng tiếng Việt (vi-VN) để nghe hay hơn.</div>
+  <div id="proto-warn">SERVER CŨ — Hãy tắt hết cửa sổ đen cũ rồi chạy lại CHAY_VE_AVATAR.bat</div>
+</div></div>
+<script>
+(function () {
+  'use strict';
+
+// ==TIMELINE-START==
+// May in gantry (dung video1): giay DUNG YEN luc in; thanh ray chay doc
+// tu dinh xuong day hang; dau may quet ngang; noi dung hien dan theo ray.
+// Thuan ham, test Node dung nguyen van. Don vi: px (1080x1920), ms.
+var CENTER_Y = 960;      // hang in luon can giua man hinh (khong sat ray)
+var RAIL_HOME = 425;     // ray do o dinh khi nghi (xa khung da in xong)
+var BAR_H = 70;          // chieu cao thanh ngang (mep in = day thanh)
+var ROW_H_T1 = 255;      // hang bac 1 (1-2 avatar, khong ten)
+var ROW_H_T1GRID = 540;  // luoi bac 1 (3-4 avatar, 2 hang x 2 anh)
+var ROW_H_T2 = 255;      // hang bac 2 solo (+ Thank you)
+var ROW_H_T3 = 370;      // hang bac 3 solo (khung lon + Thank you)
+var ROW_H_T4 = 370;      // hang bac 4 solo (khung lon + hieu ung + Thank you)
+var ROW_H_T5 = 340;      // hang bac 5 solo (khung lon + loi cam on/chuc ben canh)
+var ROW_GAP = 30;        // khe giua cac hang tren giay
+var SWEEP_PASSES = 5;    // so luot quet ngang trong 1 lan in
+var HOME_MS = 550;       // ray ve dinh sau khi in xong
+var ADV_MS = 800;        // khung trong truot vao o in (server doi dung 800ms)
+var CLEAR_MS = 900;      // bang chay xuong cuon hang cu khoi man hinh
+var CLEAR_EXIT_TOP = 1780; // dinh hang cu phai qua moc nay sau khi cuon
+var CLEAR_EXIT_BOT = 1960; // day hang cu phai qua moc nay sau khi cuon
+var HEAD_L = 60, HEAD_R = 942; // bien quet ngang cua dau may
+// Dai ten (frac theo chieu cao hang) de cat X theo dau may
+var NAME_BAND = { t1solo: [0.78, 0.95], t1pair: [0.78, 0.95], t2: [0.78, 0.95], t3: [0.78, 0.95], t4: [0.78, 0.95], t5: [0.78, 0.95] };
+
+function vaRowH(layout) {
+  if (layout === 't3') return ROW_H_T3;
+  if (layout === 't4') return ROW_H_T4;
+  if (layout === 't5') return ROW_H_T5;
+  if (layout === 't1grid') return ROW_H_T1GRID;
+  return ROW_H_T1; // t1solo/t1pair/t2 cung cao 255
+}
+// Dinh o in de hang can giua man hinh
+function vaSlotTop(rowH) { return CENTER_Y - rowH / 2; }
+// Quang duong giay can chay xuong de hang cu ra khoi man hinh (chi de lai giay trang)
+function vaClearDist(rowTopY, rowH) {
+  return Math.max(CLEAR_EXIT_TOP - rowTopY, CLEAR_EXIT_BOT - (rowTopY + rowH));
+}
+// Tien do in p 0..1 (tuyen tinh theo thoi gian ve)
+function vaRowTimeline(elapsedMs, durationMs) {
+  var T = Math.max(1, durationMs);
+  var e = Math.max(0, elapsedMs);
+  return { p: Math.min(1, e / T), done: e >= T };
+}
+// Y thanh ray: tu mep tren o in xuong day hang, tuyen tinh theo p.
+// Luc nghi ray ve RAIL_HOME o dinh; luc vao hang ray lan xuong diem bat dau in.
+function vaRailY(p, rowH) {
+  p = Math.min(1, Math.max(0, p));
+  var y0 = vaSlotTop(rowH) - BAR_H;
+  return y0 + (rowH + BAR_H) * p;
+}
+// Quet ngang sine 0..1 + chieu (+1 trai->phai, -1 nguoc lai), dau/luot muot
+function vaSweep(elapsedMs, durationMs) {
+  var T = Math.max(1, durationMs);
+  var e = Math.max(0, elapsedMs);
+  var period = T / SWEEP_PASSES;
+  var ph = (e / period) % 2;
+  if (ph < 0) ph += 2;
+  var ltr = ph < 1;
+  var u = ltr ? ph : 2 - ph;
+  return { x: 0.5 - 0.5 * Math.cos(Math.PI * u), dir: ltr ? 1 : -1 };
+}
+// % noi dung hang da hien theo mep duoi ray (toa do man hinh)
+function vaRowMaskPct(railBottomY, rowTopY, rowH) {
+  var r = (railBottomY - rowTopY) / Math.max(1, rowH);
+  return Math.min(1, Math.max(0, r)) * 100;
+}
+function vaRowMask(pct) {
+  if (pct <= 0) return 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%)';
+  if (pct >= 100) return 'none';
+  var b = Math.max(0, pct - 1.2).toFixed(2), t = Math.min(100, pct + 1.2).toFixed(2);
+  return 'linear-gradient(to bottom, #000 0%, #000 ' + b + '%, rgba(0,0,0,0) ' + t + '%)';
+}
+// Cat X ten theo dau may khi ray dang o dai ten; ngoai dai ten: 'none'/an theo mask hang
+function vaNameClip(railBottomY, rowTopY, rowH, layout, sweepX, sweepDir) {
+  var band = NAME_BAND[layout] || NAME_BAND.t2;
+  var frac = (railBottomY - rowTopY) / Math.max(1, rowH);
+  if (frac < band[0]) return 'hidden';
+  if (frac >= band[1]) return 'none';
+  var x = Math.min(1, Math.max(0, sweepX)) * 100;
+  if (sweepDir >= 0) return 'inset(0 ' + (100 - x).toFixed(1) + '% 0 0)'; // trai->phai
+  return 'inset(0 0 0 ' + x.toFixed(1) + '%)'; // phai->trai
+}
+// Vi tri giay de hang co paperY len dung o in (can giua man hinh)
+function vaPaperTarget(paperY, rowH) { return vaSlotTop(rowH) - paperY; }
+// Cum ten qua kem so luong: 1 mon chi doc ten, nhieu mon doc "5 Hoa hong" (khong doc so xu)
+function vaGiftPhrase(giftName, qty) {
+  var g = giftName || 'quà tặng';
+  return qty > 1 ? (qty + ' ' + g) : g;
+}
+// Cau cam on theo bac (thuan, test duoc): names[] + kind ('gift'/'follow'/'share'/'comment'/'tap'/'mixed')
+function vaThanksText(names, kind, giftName, qty, tier) {
+  var who = names.length <= 1 ? names[0] : (names.slice(0, -1).join(', ') + ' và ' + names[names.length - 1]);
+  var gift = vaGiftPhrase(giftName, qty);
+  if (tier >= 5) return 'Xin chân thành cảm ơn ' + who + ' đã ủng hộ ' + gift +
+    '! Chúc bạn và gia đình luôn mạnh khỏe, bình an và phát tài! ' +
+    'Cảm ơn bạn đã đồng hành cùng buổi live này!';
+  if (tier === 4) return 'Xin chân thành cảm ơn ' + who + ' đã ủng hộ ' + gift +
+    '! Chúc bạn và gia đình luôn mạnh khỏe, bình an và phát tài!';
+  if (tier === 3) return 'Cảm ơn ' + who + ' đã gửi tặng ' + gift +
+    '! Chúc bạn thật nhiều may mắn và luôn rạng rỡ!';
+  if (tier === 2) return 'Cảm ơn ' + who + ' đã gửi tặng ' + gift + '! Chúc bạn xem live thật vui!';
+  if (kind === 'gift') return 'Cảm ơn ' + who + ' đã gửi tặng ' + gift + '!';
+  if (kind === 'follow') return 'Cảm ơn ' + who + ' đã theo dõi kênh!';
+  if (kind === 'share') return 'Cảm ơn ' + who + ' đã chia sẻ live!';
+  if (kind === 'comment') return 'Cảm ơn ' + who + ' đã bình luận!';
+  if (kind === 'tap') return 'Cảm ơn ' + who + ' đã thả tim ủng hộ live!';
+  return 'Cảm ơn ' + who + ' đã ủng hộ live!';
+}
+// Cau su kien tieng Viet cho dai tren (thuan, test duoc)
+function vaEventText(entry) {
+  var name = (entry && entry.name) ? entry.name : 'Khán giả';
+  var kind = entry ? entry.kind : '';
+  if (kind === 'gift') {
+    return name + ' đã tặng ' + vaGiftPhrase(entry && entry.giftName, entry && entry.qty);
+  }
+  if (kind === 'follow') return name + ' đã theo dõi kênh';
+  if (kind === 'share') return name + ' đã chia sẻ live';
+  if (kind === 'comment') return name + ' đã bình luận';
+  if (kind === 'tap') {
+    var tc = (entry && entry.tapCount) ? entry.tapCount : 0;
+    return tc > 1 ? (name + ' đã thả ' + tc + ' tim') : (name + ' đã thả tim');
+  }
+  return name + ' đã tương tác';
+}
+// Chi so su kien theo tien do in: gom N anh thi chia thoi gian in thanh N doan bang nhau
+function vaEventIndex(p, count) {
+  var n = Math.max(1, parseInt(count, 10) || 1);
+  var k = Math.min(1, Math.max(0, p));
+  return Math.min(n - 1, Math.max(0, Math.floor(k * n)));
+}
+// Cat cau doc thanh doan ngan (moi doan <= maxLen ky tu) cho TTS Google gioi han do dai
+function vaSplitSpeech(text, maxLen) {
+  var max = Math.max(20, maxLen || 180);
+  var out = [], buf = '';
+  String(text || '').split(/(\s+)/).forEach(function (tok) {
+    if (buf && (buf + tok).length > max) { out.push(buf.trim()); buf = ''; }
+    buf += tok;
+  });
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+// Ease cho nhip tien giay / ray ve dinh
+function vaEase(k) {
+  k = Math.min(1, Math.max(0, k));
+  return k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+}
+// ==TIMELINE-END==
+
+  // Vua khung hinh (OBS de 1080x1920 thi ti le = 1)
+  var stage = document.getElementById('stage');
+  var scaler = document.getElementById('scaler');
+  function fit() {
+    var s = Math.min(window.innerWidth / 1080, window.innerHeight / 1920);
+    scaler.style.transform = 'scale(' + s + ')';
+    scaler.style.left = ((window.innerWidth - 1080 * s) / 2) + 'px';
+    scaler.style.top = ((window.innerHeight - 1920 * s) / 2) + 'px';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  var rowsEl = document.getElementById('rows');
+  var stripEl = document.getElementById('strip');
+  var barEl = document.getElementById('bar');
+  var headEl = document.getElementById('head');
+  var notifyEl = document.getElementById('notify-text');
+  var eventEl = document.getElementById('event-text');
+  var voiceWarnEl = document.getElementById('voice-warn');
+  var queuePanelEl = document.getElementById('queue-panel');
+  var queueNamesEl = document.getElementById('queue-names');
+  var unlockEl = document.getElementById('audio-unlock');
+  var speakBadgeEl = document.getElementById('speak-badge');
+  var VA_PROTO = 6;
+  var vaFrames = null; // khung 5 moc do dashboard cau hinh, server dong bo qua state
+  function vaProtoCheck(p) {
+    document.getElementById('proto-warn').style.display = (p === VA_PROTO) ? 'none' : 'block';
+  }
+  if (window.fetch) {
+    fetch('/api/state').then(function (r) { return r.json(); }).then(function (st) {
+      if (st) { vaProtoCheck(st.proto); if (st.frames) vaFrames = st.frames; }
+    }).catch(function () {});
+  }
+
+  // Trang thai giay: paperY bat bien theo hang (toa do giay), stripY dich chuyen man hinh.
+  // Man hinh = stripY + paperY. Mo hinh 1 hang: giay chi giu dung 1 hang tai 1 thoi diem
+  // (hang dang vao/dang in); hang cu duoc cuon xuong khoi man hinh truoc khi hang moi vao.
+  var stripY = 0;
+  var paperMin = 0;          // paperY cua hang duy nhat tren giay
+  var paperOf = {};          // rowId -> paperY (toi da 1 phan tu)
+  var drawRow = null;        // {rowId, layout, rowH, t0, T, p}
+  var eventRow = null;       // {rowId, messages[], idx} dai su kien tren theo tien do in
+  var railY = RAIL_HOME, headX = (HEAD_L + HEAD_R) / 2;
+  var glide = null;          // {from, to, t0, dur} giay dang truot
+  var homing = null;         // {from, t0} ray dang ve dinh
+  var pendingAdvance = null; // {rowId, layout, entries} doi truot vao sau khi cuon xong
+  var pendingClear = null;   // rowId dang duoc cuon xuong khoi man hinh
+  var railDive = null;       // {from, to, t0, dur} ray lan tu dinh xuong diem in luc vao hang
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function initialOf(name) {
+    var t = String(name || '?').trim();
+    return esc(t ? t[0].toUpperCase() : '?');
+  }
+  function rowEl(rowId) { return rowsEl.querySelector('[data-row="' + rowId + '"]'); }
+  function tierOfLayout(layout) {
+    if (layout === 't2') return '2';
+    if (layout === 't3') return '3';
+    if (layout === 't4') return '4';
+    if (layout === 't5') return '5';
+    return '1';
+  }
+  function frameCfg(tier) {
+    if (vaFrames && vaFrames[tier]) return vaFrames[tier];
+    if (vaFrames && vaFrames[String(tier)]) return vaFrames[String(tier)];
+    return null;
+  }
+  function rowHOf(layout) {
+    var cfg = frameCfg(tierOfLayout(layout));
+    if (cfg && cfg.frameH) {
+      if (layout === 't1grid') return cfg.frameH * 2 + 30;
+      return cfg.frameH;
+    }
+    return vaRowH(layout);
+  }
+
+  function avatarHtml(entry, style) {
+    var inner = entry.avatar
+      ? '<img class="av-img" src="' + esc(entry.avatar) + '" alt="" draggable="false">'
+      : '<div class="av-fallback">' + initialOf(entry.name) + '</div>';
+    return '<div class="av"' + (style ? ' style="' + style + '"' : '') + '>' + inner + '</div>';
+  }
+  function thanksLineHtml(text) {
+    if (!text) return '<div class="thanks-line">Thank you <span class="heart">❤</span></div>';
+    return '<div class="thanks-line">' + esc(text) + '</div>';
+  }
+  function customFrameHtml(entry, cfg) {
+    var w = cfg.frameW || 320, h = cfg.frameH || 255;
+    var avS = cfg.avatarSize || 192, avT = cfg.avatarTop || 14;
+    var nmS = cfg.nameSize || 24;
+    var nameTop = avT + avS + 6;
+    var thanksTop = nameTop + nmS + 8;
+    var s = '<div class="frame custom" data-qid="' + entry.qid + '"' +
+      ' style="width:' + w + 'px;height:' + h + 'px;background:' + esc(cfg.bgColor || '#fffdf8') +
+      ';border:3px solid ' + esc(cfg.borderColor || '#2a2a2a') + ';">';
+    s += avatarHtml(entry, 'width:' + avS + 'px;height:' + avS + 'px;top:' + avT + 'px;');
+    if (cfg.customImage) s += '<img class="frame-art" src="' + esc(cfg.customImage) + '" alt="" draggable="false">';
+    s += '<div class="fname" style="top:' + nameTop + 'px;font-size:' + nmS + 'px;color:' + esc(cfg.nameColor || '#333') + '">' +
+      '<span class="heart">❤</span><span class="nm">' + esc(entry.name) + '</span><span class="heart">❤</span></div>';
+    if (cfg.showThanks) s += '<div class="thanks-line" style="top:' + thanksTop + 'px;font-size:' + Math.round(nmS * 0.75) + 'px;">' + esc(cfg.thanksText || 'Thank you ❤') + '</div>';
+    return s + '</div>';
+  }
+  function frameHtml(entry, cls) {
+    var tier = String(entry.tier || tierOfLayout(cls));
+    var cfg = frameCfg(tier);
+    if (cfg && (cfg.customImage || cfg.updatedAt)) {
+      // Co tuy chinh tu dashboard: dung khung custom de dong bo voi ban xem truoc
+      if (cfg.customImage || cfg.frameW || cfg.avatarSize) return customFrameHtml(entry, cfg);
+    }
+    var h = '<div class="frame ' + cls + '" data-qid="' + entry.qid + '">';
+    if (cls === 't5') {
+      h += '<div class="t5-left"><div class="av-orn"><div class="halo"></div><div class="ring r1"></div><div class="ring r2"></div>' +
+        avatarHtml(entry) +
+        '<div class="gem g-top"></div><div class="gem g-bot"></div><div class="gem g-left"></div><div class="gem g-right"></div></div>' +
+        '<div class="fname"><span class="heart">❤</span><span class="nm">' + esc(entry.name) +
+        '</span><span class="heart">❤</span></div></div>' +
+        '<div class="t5-side">' + thanksLineHtml() +
+        '<div class="thanks-vi">Cảm ơn bạn rất nhiều!</div>' +
+        '<div class="wish-line">Chúc bạn luôn vui vẻ, may mắn và phát tài!</div></div>';
+      return h + '</div>';
+    }
+    if (cls === 't4') h += '<div class="av-orn"><div class="halo"></div><div class="ring r1"></div><div class="ring r2"></div>' +
+      avatarHtml(entry) +
+      '<div class="gem g-top"></div><div class="gem g-bot"></div><div class="gem g-left"></div><div class="gem g-right"></div></div>';
+    else if (cls === 't3') h += '<div class="av-orn"><div class="ring r1"></div><div class="ring r2"></div>' +
+      avatarHtml(entry) + '</div>';
+    else if (cls === 't2') h += '<div class="av-ring">' + avatarHtml(entry) + '</div>';
+    else h += avatarHtml(entry);
+    h += '<div class="fname"><span class="heart">❤</span><span class="nm">' + esc(entry.name) +
+      '</span><span class="heart">❤</span></div>';
+    if (cls === 't2' || cls === 't3' || cls === 't4') h += thanksLineHtml(); // Thank you chi tu bac 2
+    return h + '</div>';
+  }
+  function buildRow(entries, layout) {
+    var d = document.createElement('div');
+    d.className = layout === 't1grid' ? 'row grid' : 'row';
+    d.setAttribute('data-row', entries[0].rowId);
+    d.setAttribute('data-progress', '0.000');
+    d.style.height = rowHOf(layout) + 'px';
+    // Mac dinh an kin (tranh chop 1 frame chua in); animLoop/finalize se mo
+    d.style.maskImage = vaRowMask(0);
+    d.style.webkitMaskImage = vaRowMask(0);
+    // layout server gui thang lam class khung; luoi 2x2 dung o co t1pair
+    var cls = layout === 't1grid' ? 't1pair' : layout;
+    d.innerHTML = entries.map(function (e) { return frameHtml(e, cls); }).join('');
+    var imgs = d.querySelectorAll('.av-img');
+    for (var i = 0; i < imgs.length; i++) {
+      (function (img, entry) {
+        img.addEventListener('error', function handleErr() {
+          img.removeEventListener('error', handleErr);
+          var wrap = img.parentNode;
+          if (wrap) wrap.innerHTML = '<div class="av-fallback">' + initialOf(entry.name) + '</div>';
+        });
+      })(imgs[i], entries[i] || entries[0]);
+    }
+    var arts = d.querySelectorAll('.frame-art');
+    for (var j = 0; j < arts.length; j++) {
+      (function (img) {
+        img.addEventListener('error', function handleArt() {
+          img.removeEventListener('error', handleArt);
+          img.style.display = 'none'; // anh khung hong: an di, giu avatar + ten
+        });
+      })(arts[j]);
+    }
+    return d;
+  }
+  // Mo hinh 1 hang: giu lai dung hang rid, xoa moi hang khac khoi giay
+  function clearPaperExcept(rid) {
+    var kids = Array.prototype.slice.call(rowsEl.children);
+    for (var i = 0; i < kids.length; i++) {
+      var krid = kids[i].getAttribute('data-row');
+      if (krid !== String(rid)) {
+        rowsEl.removeChild(kids[i]);
+        delete paperOf[krid];
+      }
+    }
+  }
+  // Dau hang moi vao giay: an hoan toan phia tren man hinh, truot xuong o in;
+  // dong thoi ray lan tu dinh xuong dung diem bat dau in
+  function startAdvance(rowId, layout, entries) {
+    var rid = String(rowId), rowH = rowHOf(layout);
+    if (rowEl(rid)) return; // trung lap: hang da co, giu nguyen
+    clearPaperExcept(rid);
+    paperOf = {};
+    paperOf[rid] = -(rowH + ROW_GAP) - stripY;
+    paperMin = paperOf[rid];
+    var el = buildRow(entries, layout);
+    placeRow(el, paperOf[rid]);
+    rowsEl.appendChild(el);
+    glide = { from: stripY, to: vaPaperTarget(paperOf[rid], rowH), t0: Date.now(), dur: ADV_MS };
+    homing = null;
+    railDive = { from: railY, to: vaRailY(0, rowH), t0: Date.now(), dur: ADV_MS };
+  }
+  function placeRow(el, paperY) { el.style.top = paperY + 'px'; }
+  function finalizeRow(el) {
+    if (!el) return;
+    el.setAttribute('data-progress', '1.000');
+    el.style.maskImage = 'none';
+    el.style.webkitMaskImage = 'none';
+    var nms = el.querySelectorAll('.nm');
+    for (var i = 0; i < nms.length; i++) { nms[i].style.clipPath = 'none'; nms[i].style.visibility = 'visible'; }
+  }
+  function trimRows() {
+    var kids = Array.prototype.slice.call(rowsEl.children);
+    for (var i = 0; i < kids.length; i++) {
+      var top = (parseFloat(kids[i].style.top) || 0) + stripY;
+      var rid = kids[i].getAttribute('data-row');
+      if (drawRow && String(drawRow.rowId) === rid) continue;
+      if (pendingClear !== null && String(pendingClear) === rid) continue;
+      if (top > 1750) {
+        rowsEl.removeChild(kids[i]);
+        if (rid) delete paperOf[rid];
+      }
+    }
+    // Qua 12 hang: cat hang CU nhat (cuoi DOM), khong bao gio cat hang dang ve
+    while (rowsEl.children.length > 12) {
+      var last = rowsEl.children[rowsEl.children.length - 1];
+      var lrid = last.getAttribute('data-row');
+      if (drawRow && String(drawRow.rowId) === lrid) break;
+      rowsEl.removeChild(last);
+      if (lrid) delete paperOf[lrid];
+    }
+  }
+
+  // Vong lap gantry: in (ray xuong + dau quet + hien theo ray) / nghi (ve dinh + do giua)
+  var lastTs = 0;
+  function animLoop(ts) {
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min(0.1, (ts - lastTs) / 1000);
+    lastTs = ts;
+    var now = Date.now();
+    // Nh Tween tien giay + ray ve dinh (chay ca khi khong in)
+    if (glide) {
+      var gk = (now - glide.t0) / glide.dur;
+      if (gk >= 1) {
+        stripY = glide.to; glide = null;
+        // Cuon xong: go hang cu (da ra khoi man hinh), roi cho hang moi vao neu co
+        if (pendingClear !== null) {
+          var cel = rowEl(pendingClear);
+          if (cel) rowsEl.removeChild(cel);
+          delete paperOf[String(pendingClear)];
+          pendingClear = null;
+        }
+        if (pendingAdvance) {
+          var pa = pendingAdvance; pendingAdvance = null;
+          startAdvance(pa.rowId, pa.layout, pa.entries);
+        }
+      }
+      else stripY = glide.from + (glide.to - glide.from) * vaEase(gk);
+      stripEl.style.transform = 'translateY(' + stripY + 'px)';
+    }
+    if (homing && !drawRow) {
+      var hk = (now - homing.t0) / HOME_MS;
+      if (hk >= 1) { railY = RAIL_HOME; homing = null; }
+      else railY = homing.from + (RAIL_HOME - homing.from) * vaEase(hk);
+      barEl.style.transform = 'translateY(' + railY + 'px)';
+    }
+    if (railDive && !drawRow) {
+      var dk = (now - railDive.t0) / railDive.dur;
+      if (dk >= 1) { railY = railDive.to; railDive = null; }
+      else railY = railDive.from + (railDive.to - railDive.from) * vaEase(dk);
+      barEl.style.transform = 'translateY(' + railY + 'px)';
+    }
+    if (drawRow) {
+      var ds = drawRow;
+      var elapsed = now - ds.t0;
+      var tl = vaRowTimeline(elapsed, ds.T);
+      var p = (ds.p = Math.max(ds.p || 0, tl.p));
+      homing = null;
+      updateEventRow(p);
+      railY = vaRailY(p, ds.rowH);
+      barEl.style.transform = 'translateY(' + railY + 'px)';
+      var sw = vaSweep(elapsed, ds.T);
+      headX = HEAD_L + sw.x * (HEAD_R - HEAD_L);
+      headEl.style.left = headX + 'px';
+      var el = rowEl(ds.rowId);
+      if (el) {
+        var rowTop = (parseFloat(el.style.top) || 0) + stripY;
+        var railBottom = railY + BAR_H;
+        var mask = vaRowMask(vaRowMaskPct(railBottom, rowTop, ds.rowH));
+        el.style.maskImage = mask;
+        el.style.webkitMaskImage = mask;
+        el.setAttribute('data-progress', p.toFixed(3));
+        var nms = el.querySelectorAll('.nm');
+        for (var i = 0; i < nms.length; i++) {
+          var clip = vaNameClip(railBottom, rowTop, ds.rowH, ds.layout, sw.x, sw.dir);
+          if (clip === 'hidden') nms[i].style.visibility = 'hidden';
+          else { nms[i].style.visibility = 'visible'; nms[i].style.clipPath = clip; }
+        }
+      }
+    } else {
+      // Nghi: dau may tro ve giua ray
+      var cx = (HEAD_L + HEAD_R) / 2;
+      headX += (cx - headX) * Math.min(1, dt * 4);
+      if (Math.abs(headX - cx) < 1) headX = cx;
+      headEl.style.left = headX + 'px';
+    }
+    if (speakBadgeEl) speakBadgeEl.style.opacity = vaSpeaking ? '1' : '0';
+    requestAnimationFrame(animLoop);
+  }
+
+  // Bat dau in 1 hang: hang da duoc row-advance dua dung o in truoc do.
+  // Chi tao moi khi lo su kien advance (mo trang tre): dau thang vao o in.
+  function startRow(entries, layout, durationMs, startedAt) {
+    var rowId = entries[0].rowId;
+    if (drawRow && String(drawRow.rowId) === String(rowId)) return; // frame-start trung: giu nguyen
+    var rowH = rowHOf(layout);
+    var el = rowEl(rowId);
+    if (!el) {
+      clearPaperExcept(rowId);
+      paperOf = {};
+      paperOf[String(rowId)] = vaSlotTop(rowH) - stripY;
+      paperMin = paperOf[String(rowId)];
+      el = buildRow(entries, layout);
+      placeRow(el, paperOf[String(rowId)]);
+      rowsEl.appendChild(el);
+    }
+    railDive = null;
+    railY = vaRailY(0, rowH);
+    barEl.style.transform = 'translateY(' + railY + 'px)';
+    drawRow = { rowId: rowId, layout: layout, rowH: rowH, t0: startedAt || Date.now(), T: durationMs || 7000, p: 0 };
+    setEventRow(rowId, entries);
+    // Giay da dung yen dung o in TRUOC khi in bat dau.
+    // Trong luc in giay tuyet doi dung yen: cam truot bu o day.
+    trimRows();
+  }
+
+  // Dai thong bao: 1 dong tai 1 thoi diem
+  var notifyQueue = [], notifyBusy = false;
+  function showNextNotify() {
+    if (notifyBusy || !notifyQueue.length) return;
+    notifyBusy = true;
+    notifyEl.textContent = notifyQueue.shift();
+    notifyEl.style.opacity = '1';
+    setTimeout(function () {
+      notifyEl.style.opacity = '0';
+      setTimeout(function () { notifyBusy = false; showNextNotify(); }, 450);
+    }, 4500);
+  }
+
+  // Dai su kien tren: nhay theo dung tien do in (gom N anh thi hien N su kien lan luot)
+  function setEventRow(rowId, entries) {
+    if (!entries || !entries.length) { eventRow = null; return; }
+    eventRow = {
+      rowId: String(rowId),
+      messages: entries.map(function (e) { return vaEventText(e); }),
+      idx: -1
+    };
+  }
+  function clearEventRow(rowId) {
+    if (rowId !== undefined && rowId !== null && eventRow && String(eventRow.rowId) !== String(rowId)) return;
+    eventRow = null;
+    if (eventEl) { eventEl.textContent = ''; eventEl.style.opacity = '0'; }
+  }
+  function updateEventRow(p) {
+    if (!eventRow || !eventEl || !eventRow.messages.length) return;
+    var idx = vaEventIndex(p, eventRow.messages.length);
+    if (idx !== eventRow.idx) {
+      eventRow.idx = idx;
+      eventEl.textContent = 'Đang vẽ: ' + eventRow.messages[idx];
+      eventEl.style.opacity = '1';
+    }
+  }
+
+  // Bang hang cho duoi: hien toi da 6 nguoi sap duoc ve
+  function vaRenderQueue(queue) {
+    if (!queuePanelEl || !queueNamesEl) return;
+    var q = queue || [];
+    if (!q.length) {
+      queuePanelEl.className = 'empty';
+      queueNamesEl.textContent = 'Chưa có ai chờ — tặng quà, thả tim hoặc bình luận để lên khung!';
+      return;
+    }
+    queuePanelEl.className = '';
+    var show = q.slice(0, 6).map(function (e) { return esc(e.name); });
+    if (q.length > 6) show.push('… +' + (q.length - 6) + ' người nữa');
+    queueNamesEl.innerHTML = show.join(' &nbsp;•&nbsp; ');
+  }
+
+  // Am thanh: nhac nen tao sinh (khong ban quyen) + voice cam on + jingle moc lon.
+  // Tat ca deu co guard: thieu WebAudio/speechSynthesis thi bo qua, khong crash.
+  var VA_TRACKS = {
+    vui:  { bpm: 112, wave: 'triangle', key: 60, minor: false, drums: true },
+    nhe:  { bpm: 70,  wave: 'sine',     key: 57, minor: true,  drums: false },
+    soi:  { bpm: 132, wave: 'sawtooth', key: 62, minor: true,  drums: true },
+    tinh: { bpm: 84,  wave: 'triangle', key: 65, minor: false, drums: false }
+  };
+  var VA_JINGLE_SEC = { t3: 1.6, t4: 2.6, t5: 3.4 };
+  var audioCtx = null, musicGain = null, sfxGain = null, noiseBuf = null;
+  var musicTrack = 'off', musicVol = 60, voiceOn = true, vaSpeaking = false;
+  var musicTimer = null, musicStep = 0, musicNextT = 0, musicWalk = 0;
+  var lastVipTop = [];
+  function vaMtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  function ensureCtx() {
+    try {
+      if (!audioCtx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        audioCtx = new AC();
+        musicGain = audioCtx.createGain();
+        musicGain.gain.value = 0;
+        musicGain.connect(audioCtx.destination);
+        sfxGain = audioCtx.createGain();
+        sfxGain.gain.value = 0.9;
+        sfxGain.connect(audioCtx.destination);
+        noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+        var ch = noiseBuf.getChannelData(0);
+        for (var i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      vaRefreshMusicGain();
+    } catch (e) {}
+  }
+  function vaRefreshMusicGain() {
+    if (!audioCtx || !musicGain) return;
+    try {
+      var base = (musicVol / 100) * 0.5;
+      musicGain.gain.setTargetAtTime(musicTrack === 'off' ? 0 : (vaSpeaking ? base * 0.25 : base),
+        audioCtx.currentTime, 0.4);
+    } catch (e) {}
+  }
+  function vaPluck(freq, t, dur, wave, dest) {
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = wave; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(dest || musicGain);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function vaMusicTick() {
+    if (!audioCtx || musicTrack === 'off') return;
+    try {
+      var tr = VA_TRACKS[musicTrack];
+      if (!tr) return;
+      var stepDur = 60 / tr.bpm / 4;
+      while (musicNextT < audioCtx.currentTime + 0.3) {
+        vaMusicStep(tr, musicStep, musicNextT, stepDur);
+        musicNextT += stepDur;
+        musicStep = (musicStep + 1) % 64;
+      }
+    } catch (e) {}
+  }
+  function vaMusicStep(tr, step, t, stepDur) {
+    var bar = Math.floor(step / 16);
+    var roots = tr.minor ? [0, 8, 3, 10] : [0, 7, 9, 5];
+    var root = tr.key + roots[bar % 4];
+    var s16 = step % 16;
+    if (s16 === 0 || s16 === 8 || (tr.drums && s16 === 10)) {
+      vaPluck(vaMtof(root - 12), t, stepDur * 5, 'sine');
+    }
+    if (tr.drums && (s16 === 0 || s16 === 8)) {
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+      g.gain.setValueAtTime(0.5, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.connect(g); g.connect(musicGain);
+      o.start(t); o.stop(t + 0.25);
+    }
+    if (tr.drums && (s16 === 2 || s16 === 6 || s16 === 10 || s16 === 14)) {
+      var n = audioCtx.createBufferSource(), ng = audioCtx.createGain(), hp = audioCtx.createBiquadFilter();
+      n.buffer = noiseBuf; hp.type = 'highpass'; hp.frequency.value = 7000;
+      ng.gain.setValueAtTime(0.12, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      n.connect(hp); hp.connect(ng); ng.connect(musicGain);
+      n.start(t); n.stop(t + 0.08);
+    }
+    if (s16 % 2 === 0 && ((step * 37 + bar * 11) % 10) < 5) {
+      var penta = tr.minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9];
+      musicWalk = Math.max(0, Math.min(penta.length - 1, musicWalk + (((step * 53) % 3) - 1)));
+      vaPluck(vaMtof(root + 12 + penta[musicWalk]), t, stepDur * 6, tr.wave);
+    }
+  }
+  function vaStartMusic() {
+    ensureCtx();
+    if (!audioCtx || musicTrack === 'off' || musicTimer) return;
+    musicStep = 0; musicWalk = 2;
+    musicNextT = audioCtx.currentTime + 0.1;
+    musicTimer = setInterval(vaMusicTick, 90);
+  }
+  function vaStopMusic() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    vaRefreshMusicGain();
+  }
+  function vaJingle(level) {
+    ensureCtx();
+    if (!audioCtx) return;
+    try {
+      var lv = Number(level) || 0;
+      var notes = lv >= 2 ? [72, 76, 79, 84, 88, 91, 96, 100] : lv ? [72, 76, 79, 84, 88, 91] : [72, 76, 79, 84];
+      var gap = lv >= 2 ? 0.14 : lv ? 0.13 : 0.11, now = audioCtx.currentTime + 0.03;
+      for (var i = 0; i < notes.length; i++) {
+        vaPluck(vaMtof(notes[i]), now + i * gap, lv ? 0.7 : 0.5, 'triangle', sfxGain);
+      }
+    } catch (e) {}
+  }
+  var vaViVoice = null, vaVoiceWarned = false, vaVoiceWarnTimer = null;
+  function vaShowVoiceWarn(show) {
+    if (!voiceWarnEl) return;
+    if (vaVoiceWarnTimer) { clearTimeout(vaVoiceWarnTimer); vaVoiceWarnTimer = null; }
+    if (!show) { voiceWarnEl.style.display = 'none'; return; }
+    if (vaVoiceWarned) return; // chi nhac 1 lan moi lan mo trang
+    vaVoiceWarned = true;
+    voiceWarnEl.style.display = 'block';
+    vaVoiceWarnTimer = setTimeout(function () { voiceWarnEl.style.display = 'none'; }, 8000);
+  }
+  function vaPickVoice() {
+    try {
+      if (!('speechSynthesis' in window)) return;
+      var vs = window.speechSynthesis.getVoices() || [];
+      var exact = null, prefix = null;
+      for (var i = 0; i < vs.length; i++) {
+        var lang = String((vs[i] && vs[i].lang) || '').toLowerCase();
+        if (lang === 'vi-vn' || lang === 'vi_vn') { exact = vs[i]; break; }
+        if (!prefix && (lang === 'vi' || lang.indexOf('vi-') === 0 || lang.indexOf('vi_') === 0)) prefix = vs[i];
+      }
+      vaViVoice = exact || prefix;
+      if (vaViVoice) vaShowVoiceWarn(false);
+    } catch (e) {}
+  }
+  try {
+    if ('speechSynthesis' in window) {
+      vaPickVoice();
+      window.speechSynthesis.onvoiceschanged = vaPickVoice;
+    }
+  } catch (e) {}
+  var vaSpeakEngine = 'auto'; // auto = giong Viet trinh duyet, thieu thi Google; browser/google = ep 1 loai
+  var vaVoiceReport = '', vaLastEngine = '', vaLastLabel = '';
+  function vaReportVoice(engine, label) {
+    vaLastEngine = engine; vaLastLabel = label;
+    var locked = !vaAudioUnlocked;
+    var key = engine + '|' + label + '|' + (locked ? '1' : '0');
+    if (key === vaVoiceReport) return;
+    vaVoiceReport = key;
+    try { if (typeof socket !== 'undefined' && socket) socket.emit('voice-status', { engine: engine, label: label, locked: locked }); } catch (e) {}
+  }
+  function vaSpeak(text, availSec) {
+    vaStopVoice();
+    if (!voiceOn || !text) return;
+    var hasNative = false;
+    try { hasNative = ('speechSynthesis' in window) && !!window.speechSynthesis; } catch (e) {}
+    if (vaSpeakEngine !== 'google' && hasNative) {
+      vaPickVoice();
+      if (vaSpeakEngine === 'browser' || vaViVoice) { vaSpeakNative(text, availSec); return; }
+    }
+    if (vaSpeakEngine === 'browser') return;
+    vaSpeakGoogle(text, availSec);
+  }
+  function vaSpeakNative(text, availSec) {
+    try {
+      vaSpeaking = true;
+      vaRefreshMusicGain();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'vi-VN';
+      if (vaViVoice) {
+        u.voice = vaViVoice;
+        vaShowVoiceWarn(false);
+        vaReportVoice('browser', vaViVoice.name || 'giọng Việt');
+      } else {
+        vaShowVoiceWarn(true); // che do browser ma thieu giong Viet: doc tam giong mac dinh
+      }
+      var rate = (text.length / 16) / Math.max(1, availSec);
+      u.rate = Math.min(2, Math.max(1, rate));
+      u.volume = 1;
+      var done = function () { vaSpeaking = false; vaRefreshMusicGain(); };
+      u.onend = done; u.onerror = done;
+      window.speechSynthesis.speak(u);
+    } catch (e) { vaSpeaking = false; vaRefreshMusicGain(); }
+  }
+  var vaAudioEl = null, vaAudioQueue = [], vaAudioToken = 0, vaAudioTotal = 0, vaAudioErrors = 0;
+  // jsdom (test) co constructor Audio nhung khong phat duoc am thanh -> bo qua TTS Google
+  var vaNoMedia = false;
+  try { vaNoMedia = typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || ''); } catch (e) {}
+  // Voice Google kieu buong giam: phat 1 file mp3 do server tai ve (/api/tts),
+  // khong goi thang sang Google tu trinh duyet (hay bi chan, im lang).
+  function vaSpeakGoogle(text, availSec) {
+    vaStopAudio();
+    if (vaNoMedia || typeof Audio !== 'function') { vaSpeaking = false; vaRefreshMusicGain(); return; }
+    if (!text) { vaSpeaking = false; vaRefreshMusicGain(); return; }
+    var rate = (text.length / 16) / Math.max(1, availSec);
+    rate = Math.min(1.5, Math.max(1, rate));
+    vaAudioTotal = 1; vaAudioErrors = 0;
+    vaSpeaking = true;
+    vaRefreshMusicGain();
+    vaShowVoiceWarn(false);
+    vaReportVoice('google', 'Google Tiếng Việt');
+    vaPlayTtsFile(text, rate, ++vaAudioToken, availSec);
+  }
+  function vaPlayTtsFile(text, rate, token, availSec) {
+    if (token !== vaAudioToken) return;
+    try {
+      if (!vaAudioEl) vaAudioEl = new Audio();
+      vaAudioEl.onended = function () {
+        if (token !== vaAudioToken) return;
+        vaSpeaking = false; vaRefreshMusicGain();
+      };
+      vaAudioEl.onerror = function () { vaTtsFailed(text, availSec, token); };
+      vaAudioEl.playbackRate = rate;
+      vaAudioEl.src = '/api/tts?text=' + encodeURIComponent(text);
+      var pr = null;
+      try { pr = vaAudioEl.play(); } catch (e) { pr = null; }
+      if (pr && pr.catch) pr.catch(function () { vaTtsFailed(text, availSec, token); });
+    } catch (e) { vaTtsFailed(text, availSec, token); }
+  }
+  // File TTS hong (mat mang/server loi): rot xuong giong trinh duyet cho co tieng
+  function vaTtsFailed(text, availSec, token) {
+    if (token !== vaAudioToken) return;
+    vaAudioErrors++;
+    if (vaSpeakEngine !== 'google') {
+      var hasNative = false;
+      try { hasNative = ('speechSynthesis' in window) && !!window.speechSynthesis; } catch (e) {}
+      if (hasNative) { vaSpeakNative(text, availSec); return; }
+    }
+    vaSpeaking = false; vaRefreshMusicGain();
+  }
+  function vaStopAudio() {
+    vaAudioToken++;
+    vaAudioQueue = [];
+    try {
+      if (vaAudioEl) { vaAudioEl.onended = null; vaAudioEl.onerror = null; vaAudioEl.pause(); }
+    } catch (e) {}
+  }
+  function vaStopVoice() {
+    vaStopAudio();
+    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {}
+    vaSpeaking = false;
+    vaRefreshMusicGain();
+  }
+
+  // Mo khoa tieng: trinh duyet chan am thanh cho den khi trang duoc bam 1 lan (autoplay policy).
+  // Tu do am im bang file im lang: cho phep thi tu tat nut nhac, khong thi hien nut cho user bam.
+  var vaAudioUnlocked = false;
+  var VA_SILENCE_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+  function vaSetAudioUnlocked() {
+    if (vaAudioUnlocked) return;
+    vaAudioUnlocked = true;
+    vaUpdateUnlockUI();
+    vaVoiceReport = ''; // bao lai trang thai (het khoa) cho dashboard
+    vaReportVoice(vaLastEngine || 'auto', vaLastLabel || '');
+  }
+  function vaUpdateUnlockUI() {
+    if (!unlockEl) return;
+    unlockEl.style.display = (!vaAudioUnlocked && !vaNoMedia) ? 'block' : 'none';
+  }
+  function vaProbeAudio() {
+    if (vaAudioUnlocked || vaNoMedia) return;
+    try {
+      ensureCtx();
+      if (audioCtx && audioCtx.state === 'running') { vaSetAudioUnlocked(); return; }
+      if (typeof Audio !== 'function') return;
+      var a = new Audio(VA_SILENCE_WAV);
+      var pr = null;
+      try { pr = a.play(); } catch (e) { pr = null; }
+      if (pr && pr.then) pr.then(function () { vaSetAudioUnlocked(); }, function () {});
+      else vaSetAudioUnlocked();
+    } catch (e) {}
+  }
+  function vaGestureUnlock() {
+    ensureCtx();
+    vaProbeAudio();
+    vaUpdateUnlockUI();
+  }
+  function vaApplyAudioSettings(s) {
+    if (!s) return;
+    musicVol = Math.min(100, Math.max(0, Number(s.musicVolume) || 0));
+    voiceOn = s.voiceEnabled !== false;
+    vaSpeakEngine = (s.voiceEngine === 'browser' || s.voiceEngine === 'google') ? s.voiceEngine : 'auto';
+    if (!voiceOn) vaStopVoice();
+    var nt = (s.bgMusic && VA_TRACKS[s.bgMusic]) ? s.bgMusic : 'off';
+    if (nt !== musicTrack) { vaStopMusic(); musicTrack = nt; vaStartMusic(); }
+    else vaRefreshMusicGain();
+    ensureCtx();
+  }
+  function vaSpeakRow(entries, layout, durationMs, holdMs) {
+    var tier = entries[0].tier || 1;
+    var names = entries.map(function (e) { return e.name; });
+    var k0 = entries[0].kind;
+    var sameKind = entries.every(function (e) { return e.kind === k0; });
+    var qty = entries[0].qty || 1;
+    var text = vaThanksText(names, sameKind ? k0 : 'mixed', entries[0].giftName || 'quà tặng', qty, tier);
+    var jig = VA_JINGLE_SEC[layout] || 0;
+    vaSpeak(text, Math.max(1.5, (durationMs + holdMs) / 1000 - jig - 0.4));
+  }
+  try {
+    window.addEventListener('pointerdown', vaGestureUnlock, { passive: true });
+    window.addEventListener('keydown', vaGestureUnlock);
+    if (unlockEl) unlockEl.addEventListener('pointerdown', vaGestureUnlock);
+    setTimeout(function () { vaProbeAudio(); vaUpdateUnlockUI(); }, 1500);
+  } catch (e) {}
+
+  var socket = io();
+  socket.on('notify', function (msg) {
+    if (msg && msg.text) { notifyQueue.push(msg.text); showNextNotify(); }
+  });
+  socket.on('voice-test', function (msg) {
+    vaProbeAudio();
+    vaUpdateUnlockUI();
+    if (msg && msg.text) vaSpeak(String(msg.text).slice(0, 200), 8);
+  });
+  socket.on('frame-start', function (msg) {
+    if (!msg || !msg.entries || !msg.entries.length) return;
+    vaProbeAudio();
+    vaUpdateUnlockUI();
+    startRow(msg.entries, msg.layout || 't1solo', msg.durationMs || 7000, msg.startedAt || Date.now());
+    vaSpeakRow(msg.entries, msg.layout || 't1solo', msg.durationMs || 7000, msg.holdMs || 1000);
+  });
+  socket.on('frame-done', function (msg) {
+    if (msg && msg.qids) {
+      for (var i = 0; i < msg.qids.length; i++) {
+        var f = rowsEl.querySelector('[data-qid="' + msg.qids[i] + '"]');
+        var row = f && f.parentNode && f.parentNode.className === 'row' ? f.parentNode : (f ? f.closest('.row') : null);
+        finalizeRow(row);
+      }
+    }
+    var doneLayout = drawRow ? drawRow.layout : null;
+    drawRow = null;
+    // Ray ve dinh (giay da tien xong o nhip row-advance truoc do)
+    homing = { from: railY, t0: Date.now() };
+    if (doneLayout === 't3' || doneLayout === 't4' || doneLayout === 't5') {
+      vaJingle(doneLayout === 't5' ? 2 : doneLayout === 't4' ? 1 : 0);
+    }
+    trimRows();
+  });
+  socket.on('row-advance', function (msg) {
+    // Khung trong truot vao TRUOC khi in (server doi dung 800ms).
+    // Neu giay dang cuon hang cu thi xep cho, vao ngay khi cuon xong.
+    if (!msg || !msg.layout || msg.rowId === undefined || msg.rowId === null) return;
+    if (!msg.entries || !msg.entries.length) return;
+    if (glide) {
+      pendingAdvance = { rowId: msg.rowId, layout: msg.layout, entries: msg.entries };
+      return;
+    }
+    startAdvance(msg.rowId, msg.layout, msg.entries);
+  });
+  socket.on('row-clear', function (msg) {
+    // In xong + het gio giu theo bac: bang chay xuong, cuon hang cu ra khoi man hinh,
+    // chi de lai giay trang cho luot tiep theo.
+    if (!msg || msg.rowId === undefined || msg.rowId === null) return;
+    var rid = String(msg.rowId);
+    var el = rowEl(rid);
+    if (!el) { clearEventRow(rid); return; } // da trang (mo trang tre): khong co gi de cuon
+    if (drawRow && String(drawRow.rowId) === rid) return; // dang in: khong bao gio cuon
+    clearEventRow(rid);
+    pendingClear = rid;
+    var rowTop = (parseFloat(el.style.top) || 0) + stripY;
+    var rowH = parseFloat(el.style.height) || vaRowH('t1solo');
+    glide = { from: stripY, to: stripY + vaClearDist(rowTop, rowH), t0: Date.now(), dur: CLEAR_MS };
+  });
+  socket.on('session-reset', function () {
+    drawRow = null; glide = null; homing = null; railDive = null;
+    pendingAdvance = null; pendingClear = null;
+    clearEventRow();
+    vaStopVoice();
+    vaRenderQueue([]);
+    rowsEl.innerHTML = '';
+    paperOf = {}; paperMin = 0;
+    stripY = 0;
+    stripEl.style.transform = 'translateY(0px)';
+    railY = RAIL_HOME;
+    barEl.style.transform = 'translateY(' + RAIL_HOME + 'px)';
+    headX = (HEAD_L + HEAD_R) / 2;
+    headEl.style.left = headX + 'px';
+    notifyQueue = [];
+  });
+  // Dong bo lai khi mo overlay / mat mang roi co lai (giu identity node).
+  // Mo hinh 1 hang: giay chi giu hang dang ve, khong dung lai lich su cu.
+  socket.on('state-update', function (st) {
+    if (!st) return;
+    vaProtoCheck(st.proto);
+    if (st.frames) vaFrames = st.frames;
+    lastVipTop = st.vipTop || [];
+    vaApplyAudioSettings(st.settings);
+    vaRenderQueue(st.queue);
+    var dr = (st.drawingRow && st.drawingRow.length) ? st.drawingRow : null;
+    var drId = dr ? String(dr[0].rowId) : null;
+    var drLayout = dr ? (dr[0].rowLayout || 't1solo') : 't1solo';
+    if (drId) {
+      clearPaperExcept(drId);
+      if (paperOf[drId] === undefined) {
+        paperOf = {};
+        paperOf[drId] = vaSlotTop(rowHOf(drLayout)) - stripY; // dau thang vao o in (mo trang tre)
+        paperMin = paperOf[drId];
+      }
+      if (!rowEl(drId)) {
+        var el = buildRow(dr, drLayout);
+        placeRow(el, paperOf[drId]);
+        rowsEl.appendChild(el);
+      }
+      if (dr[0].startedAt && (!drawRow || String(drawRow.rowId) !== drId)) {
+        drawRow = { rowId: dr[0].rowId, layout: drLayout, rowH: rowHOf(drLayout),
+          t0: dr[0].startedAt, T: dr[0].durationMs || 7000, p: 0 };
+      }
+      if (dr[0].startedAt) {
+        if (!eventRow || String(eventRow.rowId) !== drId) setEventRow(drId, dr);
+      } else if (eventRow && String(eventRow.rowId) === drId) {
+        clearEventRow(drId); // hang moi chua bat dau in: chua hien su kien
+      }
+      var cur = rowEl(drId);
+      if (cur && cur.getAttribute('data-progress') === '1.000') {
+        cur.setAttribute('data-progress', '0.000'); // dang ve lai sau resync
+      }
+    } else {
+      drawRow = null;
+      if (!glide && pendingClear === null) {
+        // Chi go hang do (chua xong); giu khung vua in xong trong gio giu theo bac
+        var kids2 = Array.prototype.slice.call(rowsEl.children);
+        for (var k = 0; k < kids2.length; k++) {
+          if (kids2[k].getAttribute('data-progress') !== '1.000') {
+            var krid = kids2[k].getAttribute('data-row');
+            rowsEl.removeChild(kids2[k]);
+            delete paperOf[krid];
+          }
+        }
+      }
+    }
+    // Nhay giay ve dung o in (mo trang giua chung / noi lai mang).
+    // Khi dang co nhip truot live thi KHONG cham vao giay.
+    if (!glide && drId && paperOf[drId] !== undefined) {
+      var target = vaPaperTarget(paperOf[drId], rowHOf(drLayout));
+      if (Math.abs(stripY - target) > 2) {
+        stripY = target;
+        stripEl.style.transform = 'translateY(' + stripY + 'px)';
+      }
+    }
+    trimRows();
+  });
+
+  // Vi tri ban dau: ray o dinh, dau giua ray
+  barEl.style.transform = 'translateY(' + RAIL_HOME + 'px)';
+  requestAnimationFrame(animLoop);
+})();
+</script>
+</body>
+</html>
+
+

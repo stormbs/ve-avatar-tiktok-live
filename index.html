@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vẽ Avatar - Bảng điều khiển</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", Verdana, sans-serif; background: #14100a; color: #f3e9d2; padding: 18px; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .sub { color: #c9a86a; margin-bottom: 14px; font-size: 14px; }
+  .grid { display: grid; gap: 14px; }
+  .row2 { grid-template-columns: 1fr 1fr; }
+  .row3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 1100px) { .row2, .row3 { grid-template-columns: 1fr; } }
+  .card { background: #221a10; border: 1px solid #5a431f; border-radius: 12px; padding: 14px 16px; }
+  .card h2 { font-size: 17px; color: #ffd98a; margin-bottom: 10px; }
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; }
+  .badge.live { background: #d61f26; color: #fff; }
+  .badge.demo { background: #b8860b; color: #1c1c1c; }
+  button { cursor: pointer; border: none; border-radius: 8px; font-weight: 800; }
+  .btn { padding: 9px 16px; font-size: 14px; background: #3a2c16; color: #ffe9bd; border: 1px solid #8a6a2f; }
+  .btn:hover { background: #4d3a1c; }
+  .btn-gold { background: #ffb700; color: #1c1c1c; }
+  .btn-gold:hover { background: #ffc933; }
+  .btn-red { background: #a4161a; color: #fff; }
+  .btn-test { padding: 12px 10px; font-size: 14px; background: #0e5c46; color: #fff; width: 100%; }
+  .btn-test:hover { background: #117a5c; }
+  .btn-test:disabled { background: #444; color: #999; cursor: not-allowed; }
+  .test-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 700px) { .test-grid { grid-template-columns: 1fr 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 9px; border-bottom: 1px solid #4a3a20; text-align: left; vertical-align: top; }
+  th { color: #c9a86a; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .log-box { height: 300px; overflow-y: auto; background: #100c06; border-radius: 8px; padding: 10px; font-size: 13px; }
+  .log-box div { padding: 2px 0; border-bottom: 1px dotted #33270f; }
+  .warn-banner { background: #4d1500; border: 2px solid #ff6b00; color: #ffd9c2; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 14px; font-size: 15px; font-weight: 700; display: none; }
+  .ok-line { color: #7dff9e; font-size: 14px; }
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .form-row label { display: block; font-size: 12px; color: #c9a86a; margin-bottom: 4px; }
+  .form-row input { padding: 8px 10px; border-radius: 6px; border: 1px solid #8a6a2f;
+    background: #100c06; color: #ffe9bd; font-size: 15px; font-weight: 700; width: 130px; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; }
+  .switch input { width: 22px; height: 22px; }
+  code { background: #100c06; padding: 2px 8px; border-radius: 6px; color: #ffd98a; }
+  .guide li { margin: 6px 0 6px 18px; font-size: 14px; }
+  .stat { font-size: 30px; font-weight: 900; color: #fff; }
+  .stat-label { font-size: 12px; color: #c9a86a; }
+  .tap-bar { height: 8px; background: #100c06; border-radius: 6px; overflow: hidden; margin-top: 4px; border: 1px solid #4a3a20; }
+  .tap-bar i { display: block; height: 100%; background: #e0607e; }
+  .frames-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  @media (max-width: 1400px) { .frames-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 900px) { .frames-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .frames-grid { grid-template-columns: 1fr; } }
+  .frame-card { background: #100c06; border: 1px solid #4a3a20; border-radius: 10px; padding: 10px; }
+  .frame-card h3 { font-size: 14px; color: #ffd98a; margin-bottom: 8px; }
+  .frame-preview { background: #2a2114; border-radius: 8px; min-height: 170px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 10px; }
+  .frame-preview .pv { position: relative; text-align: center; overflow: hidden; }
+  .frame-preview .pv .pv-av { border-radius: 50%; overflow: hidden; margin: 0 auto; background: #9aa0a6; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+  .frame-preview .pv .pv-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; padding: 0 4px; }
+  .frame-preview .pv .pv-thanks { font-style: italic; font-weight: 700; color: #7a1f2b; white-space: nowrap; }
+  .frame-preview .pv img.pv-art { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+  .frame-card label { display: block; font-size: 11px; color: #c9a86a; margin: 8px 0 3px 0; }
+  .frame-card input[type="number"], .frame-card input[type="text"] { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #8a6a2f; background: #221a10; color: #ffe9bd; font-size: 13px; }
+  .frame-card input[type="color"] { width: 100%; height: 30px; border: none; background: none; padding: 0; }
+  .frame-card .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .guide table { font-size: 13px; }
+  .guide code { white-space: nowrap; }
+  .guide pre { background: #100c06; border: 1px solid #4a3a20; border-radius: 8px; padding: 10px; font-size: 12px; overflow-x: auto; color: #ffe9bd; margin: 8px 0; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 800; background: #3a2c16; border: 1px solid #8a6a2f; color: #ffe9bd; }
+</style>
+</head>
+<body>
+<h1>🎨 Vẽ Avatar — Bảng điều khiển</h1>
+<div class="sub">Màn hình live OBS: <code id="overlay-url">/overlay.html</code> (nguồn Link 1080x1920) · Webhook TikFinity: <code id="webhook-url">/api/webhook</code></div>
+
+<div id="avatar-warn" class="warn-banner">⚠️ Webhook TikFinity CHƯA gửi avatar lần nào — khung sẽ hiện vòng tròn xám + chữ cái đầu. Hãy kiểm tra Action TikFinity có gắn biến avatar (profilePictureUrl / avatar_url) không. Tuyệt đối không bịa avatar.</div>
+<div id="proto-warn" class="warn-banner">⚠️ SERVER CŨ — Hãy tắt hết cửa sổ đen cũ rồi chạy lại CHAY_VE_AVATAR.bat, sau đó F5 trang này.</div>
+
+<div class="grid row3">
+  <div class="card">
+    <h2>Trạng thái</h2>
+    <div><span id="mode-badge" class="badge live">TRỰC TIẾP</span></div>
+    <div style="margin-top:10px"><span class="stat" id="st-waiting">0</span> <span class="stat-label">người đang chờ vẽ</span></div>
+    <div style="margin-top:6px; font-size:14px;">Avatar: <span id="st-avatar">0/0</span> sự kiện có ảnh thật</div>
+    <div style="margin-top:6px; font-size:14px;" id="st-drawing">Đầu máy: đang nghỉ</div>
+    <div style="margin-top:6px; font-size:14px;" id="st-voice">Giọng overlay: chưa rõ (mở overlay để nhận)</div>
+  </div>
+  <div class="card">
+    <h2>Chế độ + Phiên</h2>
+    <label class="switch"><input type="checkbox" id="demo-toggle"> Chế độ thử (thử giao diện)</label>
+    <div style="margin-top:12px; display:flex; gap:10px;">
+      <button class="btn btn-red" onclick="resetSession()">🔄 Làm mới phiên</button>
+    </div>
+    <div style="margin-top:8px; font-size:12px; color:#c9a86a;">Lên live thật: tắt chế độ thử → Làm mới phiên → Go LIVE trong Studio → Connect trong TikFinity.</div>
+  </div>
+  <div class="card">
+    <h2>Cài đặt (lưu là dùng ngay, không cần khởi động lại)</h2>
+    <div class="form-row">
+      <div><label>Giây vẽ 1 lượt in (5–10)</label><input type="number" id="set-draw" value="7" min="5" max="10"></div>
+      <div><label>Chống spam (giây)</label><input type="number" id="set-spam" value="600" min="1" max="86400"></div>
+      <div><label>Quà từ X xu vào đợi</label><input type="number" id="set-mincoin" value="1" min="1" max="10000"></div>
+      <div><button class="btn btn-gold" onclick="saveSettings()">💾 Lưu</button></div>
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <div><label>Nội dung comment vào mốc 1 (trống = mọi comment; khớp cả khi không dấu/không cách)</label>
+        <input type="text" id="set-comment" placeholder="vd: vẽ avatar" style="width:260px; font-weight:400;"></div>
+    </div>
+    <div class="form-row" style="margin-top:10px; border-top:1px solid #4a3a20; padding-top:10px;">
+      <div><label class="switch"><input type="checkbox" id="set-tap-enabled" checked> Bật thả tim (tap)</label></div>
+      <div><label>Số tim = 1 khung mốc 1</label><input type="number" id="set-tap-goal" value="20" min="1" max="10000"></div>
+      <div><button class="btn btn-gold" onclick="saveTap()">💾 Lưu tim</button></div>
+    </div>
+    <div style="margin-top:6px; font-size:12px; color:#c9a86a;">VD: 20 tim = 1 khung mốc 1. Tim tích lũy theo từng người, đủ mốc tự vào hàng đợi.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h2>🔊 Âm thanh overlay (lưu là dùng ngay)</h2>
+  <div class="form-row">
+    <div><label>Nhạc nền</label>
+      <select id="set-music" style="padding:8px 10px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:15px; font-weight:700;">
+        <option value="off">Tắt nhạc nền</option>
+        <option value="vui">Vui nhộn</option>
+        <option value="nhe">Nhẹ nhàng</option>
+        <option value="soi">Sôi động</option>
+        <option value="tinh">Tình cảm</option>
+      </select>
+    </div>
+    <div><label>Âm lượng nhạc (<span id="music-vol-num">60</span>)</label>
+      <input type="range" id="set-musicvol" value="60" min="0" max="100" style="width:150px; accent-color:#ffb700;">
+    </div>
+    <div><label class="switch"><input type="checkbox" id="set-voice" checked> Giọng đọc cảm ơn mỗi lượt in</label></div>
+    <div><label>Giọng đọc</label>
+      <select id="set-voice-engine" style="padding:8px 10px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:15px; font-weight:700;">
+        <option value="auto">Tự động (giọng Việt, thiếu thì Google)</option>
+        <option value="browser">Trình duyệt</option>
+        <option value="google">Google Tiếng Việt</option>
+      </select>
+    </div>
+    <div><button class="btn btn-gold" onclick="saveAudio()">💾 Lưu âm thanh</button></div>
+    <div><button class="btn" onclick="testVoice()">🔊 Thử giọng overlay</button></div>
+  </div>
+  <div style="margin-top:8px; font-size:12px; color:#c9a86a;">Nhạc nền tự phát trên màn hình live, tự nhỏ lại khi giọng đọc cất tiếng. Mốc bậc 3/4/5 có thêm nhạc chúc mừng. ⚠️ Lần đầu mở overlay: bấm vào trang overlay 1 lần để trình duyệt cho phép phát tiếng.</div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h2>🧪 THỬ — chỉ chạy khi bật chế độ thử (đi đúng luồng thật: đợi → vẽ → cuộn → ở lại)</h2>
+  <div style="margin-bottom:10px; font-size:14px;">Tên thử:
+    <input type="text" id="test-name" placeholder="trống = tự đặt tên" style="width:180px; padding:6px 8px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:14px;">
+    <span style="color:#c9a86a; font-size:12px;">Xu của nút Thử quà:</span>
+    <input type="number" id="test-gift-coins" value="10" min="1" max="10000" style="width:90px; padding:6px 8px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:14px; font-weight:700;">
+    <span style="color:#c9a86a; font-size:12px;">Số lượng:</span>
+    <input type="number" id="test-gift-qty" value="1" min="1" max="999" style="width:70px; padding:6px 8px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:14px; font-weight:700;">
+    <span style="color:#c9a86a; font-size:12px;">Nội dung comment thử:</span>
+    <input type="text" id="test-comment" placeholder="trống = đúng nội dung đã cài" style="width:200px; padding:6px 8px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:14px;">
+    <span style="color:#c9a86a; font-size:12px;">Số tim thử:</span>
+    <input type="number" id="test-tap-count" value="20" min="1" max="10000" style="width:80px; padding:6px 8px; border-radius:6px; border:1px solid #8a6a2f; background:#100c06; color:#ffe9bd; font-size:14px; font-weight:700;">
+  </div>
+  <div style="margin-bottom:10px; font-size:14px; color:#c9a86a;">Bấm nhanh nhiều mốc liên tục để thử màn hình live:</div>
+  <div class="test-grid" style="margin-bottom:10px;">
+    <button class="btn-test" onclick="runTestMilestone(1)">Thử 1 xu (bậc 1)</button>
+    <button class="btn-test" onclick="runTestMilestone(5)">Thử 5 xu (bậc 2)</button>
+    <button class="btn-test" onclick="runTestMilestone(10)">Thử 10 xu (bậc 3)</button>
+    <button class="btn-test" onclick="runTestMilestone(20)">Thử 20 xu (bậc 4)</button>
+    <button class="btn-test" onclick="runTestMilestone(50)">Thử 50 xu (bậc 5)</button>
+  </div>
+  <div class="test-grid">
+    <button class="btn-test" id="btn-demo-auto" onclick="runAutoDemo()">▶ Chạy thử tự động (có sẵn dữ liệu)</button>
+    <button class="btn-test" id="btn-demo-stop" onclick="stopAutoDemo()" style="display:none;">⏹ Dừng chạy thử</button>
+    <button class="btn-test" onclick="runTest('gift')">Thử quà</button>
+    <button class="btn-test" onclick="runTest('comment')">Thử bình luận</button>
+    <button class="btn-test" onclick="runTest('follow')">Thử theo dõi</button>
+    <button class="btn-test" onclick="runTest('share')">Thử chia sẻ</button>
+    <button class="btn-test" onclick="runTest('tap')">Thử thả tim</button>
+    <button class="btn-test" onclick="runTest('top1')">Thử Bậc 5 (khung xịn nhất)</button>
+    <button class="btn-test" onclick="clearTestQueue()">Xóa hàng đợi thử</button>
+    <button class="btn-test" onclick="resetSession()">Đặt lại phiên thử</button>
+  </div>
+  <div id="demo-status" style="margin-top:10px; font-size:14px; color:#c9a86a;">Chạy thử tự động: bấm ▶ là chạy, không cần nhập gì.</div>
+</div>
+
+<div class="grid row3" style="margin-top:14px;">
+  <div class="card">
+    <h2>Hàng đợi vẽ</h2>
+    <table><thead><tr><th>#</th><th>Tên</th><th>Loại</th><th></th></tr></thead>
+    <tbody id="queue-body"><tr><td colspan="4">Trống</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h2>❤️ Tim tích lũy (đủ mốc tự vào đợi)</h2>
+    <table><thead><tr><th>Tên</th><th>Tiến độ</th></tr></thead>
+    <tbody id="tap-body"><tr><td colspan="2">Chưa có tim</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Top quà trong phiên (chỉ hiện ở đây, không lên màn hình live)</h2>
+    <table><thead><tr><th>#</th><th>Tên</th><th>Tổng xu</th><th>Bậc vẽ</th></tr></thead>
+    <tbody id="top-body"><tr><td colspan="4">Chưa có quà</td></tr></tbody></table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h2>🖼️ Khung vẽ 5 mốc (xem mẫu + sửa, overlay đồng bộ ngay)</h2>
+  <div style="font-size:13px; color:#c9a86a; margin-bottom:10px;">Mỗi mốc 1 khung. Mặc định dùng khung có sẵn. Muốn khung riêng: thiết kế file PNG (khuyên dùng nền trong suốt, <b>để trống 1 vòng tròn</b> cho avatar), bấm <b>Chọn ảnh</b> ở mốc đó. Chỉnh <b>Cỡ avatar / Cách top</b> sao cho vòng tròn khớp ảnh, rồi <b>Lưu mốc</b> — màn hình live dùng khung mới ngay, không cần khởi động lại.</div>
+  <div class="frames-grid" id="frames-grid"></div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <h2>Log sự kiện</h2>
+  <div class="log-box" id="log-box"></div>
+</div>
+
+<div class="card guide" style="margin-top:14px;">
+  <h2>📡 Bảng hướng dẫn kết nối TikFinity chi tiết (làm 1 lần, dùng mãi)</h2>
+  <div style="font-size:14px; margin-bottom:8px;">Webhook của bạn: <code id="webhook-url-2"></code> <button class="btn" style="padding:4px 12px; font-size:12px;" onclick="copyWebhook()">📋 Copy</button></div>
+  <h3 style="color:#ffd98a; font-size:15px; margin:12px 0 6px 0;">Bước 1 — Tạo Action trong TikFinity</h3>
+  <ol>
+    <li>Mở TikFinity → tab <b>Actions</b> → <b>Create Action</b>, đặt tên <code>Ve Avatar - Moi su kien</code>.</li>
+    <li>Thêm trigger <b>Webhook POST</b>, dán URL webhook ở trên vào ô URL. Method <code>POST</code>, Content-Type <code>application/json</code>.</li>
+    <li>Gắn <b>5 sự kiện</b> vào cùng 1 Action này (bảng bên dưới). Mỗi sự kiện gửi đúng body mẫu của nó.</li>
+  </ol>
+  <h3 style="color:#ffd98a; font-size:15px; margin:12px 0 6px 0;">Bước 2 — Bảng 5 sự kiện + body mẫu</h3>
+  <table>
+    <thead><tr><th>Sự kiện TikFinity</th><th>triggerTypeId</th><th>Vào đâu?</th><th>Body JSON gửi về webhook</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill">🎁 Gift</span></td><td><code>3</code></td><td>Mốc theo tổng xu: 1-4 xu bậc 1, 5+ bậc 2, 10+ bậc 3, 20+ bậc 4, 50+ bậc 5</td><td><code>{"triggerTypeId":3,"userId":"$userId","nickname":"$nickname","profilePictureUrl":"$profilePictureUrl","giftName":"$giftName","diamondCount":$diamondCount,"repeatCount":$repeatCount}</code></td></tr>
+      <tr><td><span class="pill">💬 Chat</span></td><td><code>11</code></td><td>Mốc 1 (nếu khớp nội dung đã cài)</td><td><code>{"triggerTypeId":11,"userId":"$userId","nickname":"$nickname","profilePictureUrl":"$profilePictureUrl","content":"$comment"}</code></td></tr>
+      <tr><td><span class="pill">➕ Follow</span></td><td><code>1</code></td><td>Mốc 1 (1 lần/phiên)</td><td><code>{"triggerTypeId":1,"userId":"$userId","nickname":"$nickname","profilePictureUrl":"$profilePictureUrl"}</code></td></tr>
+      <tr><td><span class="pill">🔁 Share</span></td><td><code>8</code></td><td>Mốc 1</td><td><code>{"triggerTypeId":8,"event":"share","userId":"$userId","nickname":"$nickname","profilePictureUrl":"$profilePictureUrl"}</code></td></tr>
+      <tr><td><span class="pill">❤️ Like / Tap</span></td><td><code>7</code></td><td>Gom đủ <b id="guide-tap-goal">20</b> tim = 1 khung mốc 1</td><td><code>{"triggerTypeId":7,"userId":"$userId","nickname":"$nickname","profilePictureUrl":"$profilePictureUrl","likeCount":$likeCount}</code></td></tr>
+    </tbody>
+  </table>
+  <div style="font-size:13px; color:#c9a86a; margin-top:6px;">Lưu ý: tên biến ($userId, $nickname...) tùy phiên bản TikFinity — bấm nút chèn biến của TikFinity để lấy đúng tên. Quan trọng nhất: <b>userId</b> (định danh), <b>diamondCount</b> (xu thật, không đoán), <b>likeCount</b> (số tim mỗi đợt), <b>profilePictureUrl</b> (avatar thật).</div>
+  <h3 style="color:#ffd98a; font-size:15px; margin:12px 0 6px 0;">Bước 3 — Thứ tự lên live mỗi buổi</h3>
+  <ol>
+    <li>Trên dashboard này: <b>tắt chế độ thử</b> → bấm <b>🔄 Làm mới phiên</b>.</li>
+    <li>Mở TikTok Studio → <b>Go LIVE</b> → mở TikFinity → bấm <b>Connect</b>.</li>
+    <li>Trong OBS: thêm nguồn Browser <code id="overlay-url-2"></code> cỡ 1080x1920. Bấm vào overlay 1 lần để bật tiếng.</li>
+    <li>Thử thật: thả vài tim / bình luận / tặng quà nhỏ → xem log + hàng đợi nhảy là xong.</li>
+  </ol>
+  <h3 style="color:#ffd98a; font-size:15px; margin:12px 0 6px 0;">Bảng lỗi thường gặp</h3>
+  <table>
+    <thead><tr><th>Hiện tượng</th><th>Nguyên nhân</th><th>Cách sửa</th></tr></thead>
+    <tbody>
+      <tr><td>Khung hiện vòng xám + chữ cái</td><td>Webhook thiếu avatar</td><td>Trong body TikFinity phải có <code>profilePictureUrl</code>. Banner cam trên dashboard sẽ tắt khi có avatar thật đầu tiên.</td></tr>
+      <tr><td>Tặng quà mà không vào đợi</td><td>Thiếu <code>diamondCount</code> hoặc dưới mốc cài</td><td>Kiểm tra log dòng ⚠️. Gắn đúng biến xu, giảm “Quà từ X xu” về 1 để thử.</td></tr>
+      <tr><td>Thả tim không lên</td><td>Chưa gắn sự kiện Like, hoặc chưa đủ mốc</td><td>Gắn trigger Like (id 7) có <code>likeCount</code>. Xem bảng “Tim tích lũy” để biết còn thiếu bao nhiêu.</td></tr>
+      <tr><td>Bình luận không vào</td><td>Lệch nội dung đã cài</td><td>Để trống ô nội dung = mọi comment đều vào. Hoặc nhập đúng chữ (không dấu vẫn khớp).</td></tr>
+      <tr><td>Overlay im lặng</td><td>Trình duyệt chặn autoplay</td><td>Bấm vào trang overlay 1 lần. Nút xanh “BẤM VÀO ĐÂY” sẽ tự mất khi có tiếng.</td></tr>
+      <tr><td>Banner đỏ “SERVER CŨ”</td><td>Mở nhầm bản cũ</td><td>Tắt hết cửa sổ đen cũ, chạy lại <code>CHAY_VE_AVATAR.bat</code>, F5 cả 2 trang.</td></tr>
+    </tbody>
+  </table>
+  <h3 style="color:#ffd98a; font-size:15px; margin:12px 0 6px 0;">Bảng mốc bậc vẽ hiện tại</h3>
+  <table>
+    <thead><tr><th>Mốc</th><th>Điều kiện</th><th>Khung</th><th>Giữ sau in</th></tr></thead>
+    <tbody>
+      <tr><td>Bậc 1</td><td>Dưới 5 xu / comment / follow / share / đủ tim</td><td>Avatar + tên, gom tối đa 4/lượt (2x2)</td><td>1 giây</td></tr>
+      <tr><td>Bậc 2</td><td>Tổng từ 5 xu</td><td>Avatar viền đẹp + tên + Thank you, solo</td><td>2 giây</td></tr>
+      <tr><td>Bậc 3</td><td>Tổng từ 10 xu</td><td>Khung lớn + tên đẹp + Thank you, solo</td><td>3 giây</td></tr>
+      <tr><td>Bậc 4</td><td>Tổng từ 20 xu</td><td>Như bậc 3 + hào quang + ngọc, solo</td><td>5 giây</td></tr>
+      <tr><td>Bậc 5</td><td>Tổng từ 50 xu</td><td>Như bậc 4 + lời cảm ơn/chúc bên cạnh, solo</td><td>7 giây</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  var socket = io();
+  var lastState = null;
+  var VA_PROTO = 6;
+  document.getElementById('overlay-url').textContent = location.origin + '/overlay.html';
+  document.getElementById('webhook-url').textContent = location.origin + '/api/webhook';
+  document.getElementById('webhook-url-2').textContent = location.origin + '/api/webhook';
+  var ov2 = document.getElementById('overlay-url-2');
+  if (ov2) ov2.textContent = location.origin + '/overlay.html';
+  function copyWebhook() {
+    var t = location.origin + '/api/webhook';
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { alert('✅ Đã copy webhook!'); });
+    else { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); alert('✅ Đã copy webhook!'); } catch (e) {} document.body.removeChild(ta); }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function timeStr(t) {
+    var d = new Date(t);
+    return d.toLocaleTimeString('vi-VN', { hour12: false });
+  }
+  function kindVi(k) {
+    return k === 'gift' ? '🎁 Tặng quà' : k === 'comment' ? '💬 Bình luận' : k === 'follow' ? '➕ Theo dõi' : k === 'share' ? '🔁 Chia sẻ' : k === 'tap' ? '❤️ Thả tim' : esc(k);
+  }
+  function kindShort(k) {
+    return k === 'gift' ? '🎁 Quà' : k === 'comment' ? '💬 Cmt' : k === 'follow' ? '➕ Flw' : k === 'share' ? '🔁 Shr' : k === 'tap' ? '❤️ Tim' : esc(k || '');
+  }
+
+  function render(st) {
+    lastState = st;
+    var badge = document.getElementById('mode-badge');
+    if (st.settings.demoMode) { badge.textContent = 'BẢN THỬ'; badge.className = 'badge demo'; }
+    else { badge.textContent = 'TRỰC TIẾP'; badge.className = 'badge live'; }
+    document.getElementById('demo-toggle').checked = !!st.settings.demoMode;
+    document.getElementById('st-waiting').textContent = st.waitingCount;
+    document.getElementById('st-avatar').textContent = st.avatarStats.withAvatar + '/' + st.avatarStats.total;
+    var drw = st.drawingRow || [];
+    document.getElementById('st-drawing').textContent = drw.length
+      ? ('Đầu máy: đang vẽ bậc ' + (drw[0].tier || 1) + ' — ' + drw.map(function (e) { return e.name; }).join(' + '))
+      : 'Đầu máy: đang nghỉ';
+    document.getElementById('avatar-warn').style.display = st.avatarWarning ? 'block' : 'none';
+    document.getElementById('proto-warn').style.display = (st.proto === VA_PROTO) ? 'none' : 'block';
+    if (document.activeElement !== document.getElementById('set-draw'))
+      document.getElementById('set-draw').value = st.settings.drawSeconds;
+    if (document.activeElement !== document.getElementById('set-spam'))
+      document.getElementById('set-spam').value = st.settings.spamSeconds;
+    if (document.activeElement !== document.getElementById('set-mincoin'))
+      document.getElementById('set-mincoin').value = st.settings.minGiftCoins;
+    if (document.activeElement !== document.getElementById('set-comment'))
+      document.getElementById('set-comment').value = st.settings.commentKeyword || '';
+    if (document.activeElement !== document.getElementById('set-tap-goal'))
+      document.getElementById('set-tap-goal').value = st.settings.tapGoal || 20;
+    document.getElementById('set-tap-enabled').checked = st.settings.tapEnabled !== false;
+    var gtg = document.getElementById('guide-tap-goal');
+    if (gtg) gtg.textContent = st.settings.tapGoal || 20;
+    var ttc = document.getElementById('test-tap-count');
+    if (ttc && document.activeElement !== ttc && st.settings.tapGoal) ttc.value = st.settings.tapGoal;
+    if (document.activeElement !== document.getElementById('set-music'))
+      document.getElementById('set-music').value = st.settings.bgMusic || 'off';
+    if (document.activeElement !== document.getElementById('set-musicvol')) {
+      document.getElementById('set-musicvol').value = (st.settings.musicVolume == null ? 60 : st.settings.musicVolume);
+      document.getElementById('music-vol-num').textContent = document.getElementById('set-musicvol').value;
+    }
+    document.getElementById('set-voice').checked = st.settings.voiceEnabled !== false;
+    if (document.activeElement !== document.getElementById('set-voice-engine'))
+      document.getElementById('set-voice-engine').value = st.settings.voiceEngine || 'auto';
+    var vs = st.voiceStatus;
+    document.getElementById('st-voice').textContent = 'Giọng overlay: ' + (vs && vs.label
+      ? vs.label + (vs.engine === 'google' ? ' (Google)' : vs.engine === 'browser' ? ' (trình duyệt)' : '') + (vs.locked ? ' — ⚠️ CHƯA CÓ TIẾNG: bấm vào trang overlay 1 lần để bật' : ' — đã sẵn sàng 🔊')
+      : 'chưa rõ (mở overlay rồi bấm vào trang overlay 1 lần)');
+
+    var testBtns = document.querySelectorAll('.btn-test');
+    for (var i = 0; i < testBtns.length; i++) {
+      var b = testBtns[i];
+      if (b.textContent.indexOf('Đặt lại phiên thử') === 0) continue;
+      b.disabled = !st.settings.demoMode;
+    }
+
+    // Hàng đợi: đang vẽ + đang chờ
+    var html = '';
+    (st.drawingRow || []).forEach(function (d) {
+      html += '<tr><td>🖌️</td><td><b>' + esc(d.name) + '</b></td><td>' + kindShort(d.kind) + '</td><td></td></tr>';
+    });
+    (st.queue || []).forEach(function (e, i) {
+      html += '<tr><td>' + (i + 1) + '</td><td>' + esc(e.name) + '</td><td>' + kindShort(e.kind) + '</td>' +
+        '<td><button class="btn" style="padding:3px 10px;font-size:12px;" onclick="removeFromQueue(' + e.qid + ')">Xóa</button></td></tr>';
+    });
+    document.getElementById('queue-body').innerHTML = html || '<tr><td colspan="4">Trống</td></tr>';
+
+    var tapHtml = '';
+    (st.tapTop || []).slice(0, 10).forEach(function (t) {
+      var pct = Math.min(100, Math.round((t.count / Math.max(1, t.goal || 20)) * 100));
+      tapHtml += '<tr><td>' + esc(t.name) + '</td><td><b>' + t.count + '/' + (t.goal || 20) + '</b> tim<div class="tap-bar"><i style="width:' + pct + '%"></i></div></td></tr>';
+    });
+    document.getElementById('tap-body').innerHTML = tapHtml || '<tr><td colspan="2">Chưa có tim</td></tr>';
+
+    var top = '';
+    (st.vipTop || []).slice(0, 10).forEach(function (t, i) {
+      top += '<tr><td>' + (i + 1) + (i === 0 ? ' 👑' : '') + '</td><td>' + esc(t.name) + '</td><td><b>' + t.coins + '</b> xu</td><td>Bậc ' + (t.tier || 1) + '</td></tr>';
+    });
+    document.getElementById('top-body').innerHTML = top || '<tr><td colspan="4">Chưa có quà</td></tr>';
+
+    if (st.frames) renderFrames(st.frames);
+
+    var logs = '';
+    (st.logs || []).slice().reverse().forEach(function (l) {
+      logs += '<div>[' + timeStr(l.t) + '] ' + esc(l.text) + '</div>';
+    });
+    document.getElementById('log-box').innerHTML = logs || '<div>Chưa có sự kiện.</div>';
+  }
+
+  var framesCache = null;
+  function renderFrames(frames) {
+    framesCache = frames;
+    var grid = document.getElementById('frames-grid');
+    if (!grid) return;
+    var html = '';
+    for (var tier = 1; tier <= 5; tier++) {
+      var f = frames[tier] || frames[String(tier)];
+      if (!f) continue;
+      var scale = Math.min(1, 200 / Math.max(1, f.frameW));
+      var pw = Math.round(f.frameW * scale), ph = Math.round(f.frameH * scale);
+      var avS = Math.round(f.avatarSize * scale), avT = Math.round(f.avatarTop * scale);
+      var nmS = Math.round(f.nameSize * scale);
+      var art = f.customImage ? '<img class="pv-art" src="' + esc(f.customImage) + '" alt="">' : '';
+      html += '<div class="frame-card"><h3>Mốc ' + tier + ' — ' + esc(f.name || '') + '</h3>' +
+        '<div class="frame-preview"><div class="pv" style="width:' + pw + 'px;height:' + ph + 'px;background:' + esc(f.bgColor || '#fffdf8') + ';border:3px solid ' + esc(f.borderColor || '#2a2a2a') + ';border-radius:8px;">' +
+        '<div class="pv-av" style="width:' + avS + 'px;height:' + avS + 'px;margin-top:' + avT + 'px;font-size:' + Math.round(avS / 2.5) + 'px;">A</div>' +
+        '<div class="pv-name" style="font-size:' + nmS + 'px;color:' + esc(f.nameColor || '#333') + ';margin-top:4px;">❤ Tên mẫu ❤</div>' +
+        (f.showThanks ? '<div class="pv-thanks" style="font-size:' + Math.max(9, Math.round(nmS * 0.7)) + 'px;">' + esc(f.thanksText || 'Thank you ❤') + '</div>' : '') +
+        art + '</div></div>' +
+        (f.customImage ? '<div style="font-size:11px;color:#7dff9e;margin-top:4px;">✓ Đang dùng ảnh custom</div>' : '<div style="font-size:11px;color:#c9a86a;margin-top:4px;">Khung mặc định</div>') +
+        '<label>Tên mốc</label><input type="text" id="fr-name-' + tier + '" value="' + esc(f.name || '') + '">' +
+        '<div class="frow"><div><label>Rộng (px)</label><input type="number" id="fr-w-' + tier + '" value="' + f.frameW + '" min="150" max="1000"></div>' +
+        '<div><label>Cao (px)</label><input type="number" id="fr-h-' + tier + '" value="' + f.frameH + '" min="150" max="1200"></div></div>' +
+        '<div class="frow"><div><label>Cỡ avatar (px)</label><input type="number" id="fr-av-' + tier + '" value="' + f.avatarSize + '" min="40" max="800"></div>' +
+        '<div><label>Avatar cách top (px)</label><input type="number" id="fr-avt-' + tier + '" value="' + f.avatarTop + '" min="0" max="1000"></div></div>' +
+        '<div class="frow"><div><label>Cỡ chữ tên</label><input type="number" id="fr-ns-' + tier + '" value="' + f.nameSize + '" min="10" max="80"></div>' +
+        '<div><label>Màu tên</label><input type="color" id="fr-nc-' + tier + '" value="' + esc(f.nameColor || '#333333') + '"></div></div>' +
+        '<div class="frow"><div><label>Nền khung</label><input type="color" id="fr-bg-' + tier + '" value="' + esc(f.bgColor || '#fffdf8') + '"></div>' +
+        '<div><label>Viền khung</label><input type="color" id="fr-bd-' + tier + '" value="' + esc(f.borderColor || '#2a2a2a') + '"></div></div>' +
+        '<label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fr-th-' + tier + '" ' + (f.showThanks ? 'checked' : '') + ' style="width:16px;height:16px;"> Hiện dòng Thank you</label>' +
+        '<label>Chữ Thank you</label><input type="text" id="fr-tht-' + tier + '" value="' + esc(f.thanksText || '') + '">' +
+        '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">' +
+        '<button class="btn btn-gold" style="padding:6px 12px;font-size:12px;flex:1;" onclick="saveFrame(' + tier + ')">💾 Lưu mốc ' + tier + '</button></div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
+        '<label class="btn" style="padding:6px 12px;font-size:12px;flex:1;text-align:center;">📤 Chọn ảnh<input type="file" id="fr-file-' + tier + '" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="uploadFrame(' + tier + ')"></label>' +
+        (f.customImage ? '<button class="btn btn-red" style="padding:6px 12px;font-size:12px;flex:1;" onclick="removeFrameImage(' + tier + ')">🗑 Xóa ảnh</button>' : '') +
+        '</div></div>';
+    }
+    // Chỉ vẽ lại khi khác (tránh mất focus lúc gõ)
+    var sig = html.length + '|' + Object.keys(frames).map(function (k) { return (frames[k].updatedAt || 0); }).join(',');
+    if (grid.getAttribute('data-sig') !== sig || !grid.children.length) {
+      var active = document.activeElement && document.activeElement.id;
+      if (!active || active.indexOf('fr-') !== 0) { grid.innerHTML = html; grid.setAttribute('data-sig', sig); }
+    }
+  }
+  function saveFrame(tier) {
+    var body = {
+      tier: tier,
+      name: document.getElementById('fr-name-' + tier).value,
+      frameW: parseInt(document.getElementById('fr-w-' + tier).value, 10),
+      frameH: parseInt(document.getElementById('fr-h-' + tier).value, 10),
+      avatarSize: parseInt(document.getElementById('fr-av-' + tier).value, 10),
+      avatarTop: parseInt(document.getElementById('fr-avt-' + tier).value, 10),
+      nameSize: parseInt(document.getElementById('fr-ns-' + tier).value, 10),
+      nameColor: document.getElementById('fr-nc-' + tier).value,
+      bgColor: document.getElementById('fr-bg-' + tier).value,
+      borderColor: document.getElementById('fr-bd-' + tier).value,
+      showThanks: document.getElementById('fr-th-' + tier).checked,
+      thanksText: document.getElementById('fr-tht-' + tier).value
+    };
+    fetch('/api/frames', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (j.success) alert('✅ Đã lưu khung mốc ' + tier + ', overlay đồng bộ ngay.');
+        else alert(j.message || 'Lỗi lưu khung.');
+      });
+  }
+  function uploadFrame(tier) {
+    var inp = document.getElementById('fr-file-' + tier);
+    if (!inp || !inp.files || !inp.files[0]) return;
+    var file = inp.files[0];
+    if (file.size > 8 * 1024 * 1024) { alert('Ảnh quá lớn (tối đa 8MB).'); return; }
+    var rd = new FileReader();
+    rd.onload = function () {
+      fetch('/api/frames/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tier, dataUrl: rd.result }) })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          if (j.success) alert('✅ Đã thay ảnh khung mốc ' + tier + '! Chỉnh Cỡ avatar/Cách top cho khớp vòng tròn rồi Lưu mốc.');
+          else alert(j.message || 'Lỗi tải ảnh.');
+        });
+    };
+    rd.readAsDataURL(file);
+  }
+  function removeFrameImage(tier) {
+    if (!confirm('Xóa ảnh custom mốc ' + tier + ', về khung mặc định?')) return;
+    fetch('/api/frames/remove-image', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: tier }) }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.success) alert(j.message || 'Lỗi xóa ảnh.');
+      });
+  }
+
+  socket.on('state-update', render);
+  fetch('/api/state').then(function (r) { return r.json(); }).then(render);
+
+  document.getElementById('demo-toggle').addEventListener('change', function (e) {
+    fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ demoMode: e.target.checked }) });
+  });
+  function saveSettings() {
+    fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        drawSeconds: parseInt(document.getElementById('set-draw').value),
+        spamSeconds: parseInt(document.getElementById('set-spam').value),
+        minGiftCoins: parseInt(document.getElementById('set-mincoin').value),
+        commentKeyword: document.getElementById('set-comment').value
+      })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.success) alert('✅ Đã lưu cài đặt, áp dụng ngay.');
+      else alert('Lỗi lưu cài đặt.');
+    });
+  }
+  function saveTap() {
+    fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tapEnabled: document.getElementById('set-tap-enabled').checked,
+        tapGoal: parseInt(document.getElementById('set-tap-goal').value, 10)
+      })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.success) alert('✅ Đã lưu thả tim, áp dụng ngay.');
+      else alert('Lỗi lưu thả tim.');
+    });
+  }
+  document.getElementById('set-musicvol').addEventListener('input', function (e) {
+    document.getElementById('music-vol-num').textContent = e.target.value;
+  });
+  function saveAudio() {
+    fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bgMusic: document.getElementById('set-music').value,
+        musicVolume: parseInt(document.getElementById('set-musicvol').value, 10),
+        voiceEnabled: document.getElementById('set-voice').checked,
+        voiceEngine: document.getElementById('set-voice-engine').value
+      })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.success) alert('✅ Đã lưu âm thanh, overlay dùng ngay.');
+      else alert('Lỗi lưu âm thanh.');
+    });
+  }
+  function testVoice() {
+    // Nghe ngay tren dashboard (bam la thao tac tay nen trinh duyet cho phat) + gui overlay doc
+    var t = 'Xin chào! Đây là giọng đọc thử của màn hình vẽ avatar.';
+    try {
+      var a = new Audio('/api/tts?text=' + encodeURIComponent(t));
+      var pr = a.play();
+      if (pr && pr.catch) pr.catch(function () {});
+    } catch (e) {}
+    fetch('/api/test/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.success) alert('Lỗi thử giọng.');
+      });
+  }
+  function resetSession() {
+    if (!confirm('Làm mới phiên? Hàng đợi + giấy + tổng xu quà + tim sẽ về trống.')) return;
+    fetch('/api/session/reset', { method: 'POST' });
+  }
+  function removeFromQueue(qid) {
+    if (!confirm('Xóa khung #' + qid + ' khỏi hàng đợi?')) return;
+    fetch('/api/queue/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qid: qid }) });
+  }
+  function testName(fallback) {
+    var v = document.getElementById('test-name').value.trim();
+    return v || fallback;
+  }
+  function runTest(kind) {
+    var body = { name: testName('') };
+    if (!body.name) delete body.name;
+    if (kind === 'gift') {
+      var c = parseInt(document.getElementById('test-gift-coins').value, 10);
+      if (c >= 1) body.coins = c;
+      var q = parseInt(document.getElementById('test-gift-qty').value, 10);
+      if (q >= 1) body.qty = q;
+    }
+    if (kind === 'comment') {
+      var t = document.getElementById('test-comment').value.trim();
+      if (t) body.text = t;
+    }
+    if (kind === 'tap') {
+      var tc = parseInt(document.getElementById('test-tap-count').value, 10);
+      if (tc >= 1) body.count = tc;
+    }
+    fetch('/api/test/' + kind, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.success) alert(j.message || 'Thử thất bại (cần bật chế độ thử).');
+      });
+  }
+  function runTestMilestone(coins) {
+    fetch('/api/test/gift', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: testName('Mốc ' + coins + ' xu'), coins: coins }) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.success) alert(j.message || 'Thử thất bại (cần bật chế độ thử).');
+      });
+  }
+  // Chạy thử tự động: dữ liệu có sẵn, bấm ▶ là chạy, không hỏi tên từng bước.
+  var DEMO_SCRIPT = [
+    { kind: 'gift', name: 'Anh Tho' },
+    { kind: 'comment', name: 'Be Bon' },
+    { kind: 'follow', name: 'Chi Bay' },
+    { kind: 'gift', name: 'Chu Tu' },
+    { kind: 'comment', name: 'Co Nam' },
+    { kind: 'gift', name: 'Bac Sau' },
+    { kind: 'top1' },
+    { kind: 'follow', name: 'Em Ut' }
+  ];
+  var demoRunning = false, demoStarting = false, demoTimers = [];
+  function demoStatus(t) { document.getElementById('demo-status').textContent = t; }
+  function runAutoDemo() {
+    if (demoRunning || demoStarting) return;
+    demoStarting = true;
+    fetch('/api/state').then(function (r) { return r.json(); }).then(function (st) {
+      var dirty = (st.queue && st.queue.length) || (st.drawingRow && st.drawingRow.length) || (st.drawn && st.drawn.length);
+      if (dirty) {
+        if (!confirm('Phiên đang có dữ liệu. Làm mới rồi chạy thử tự động?')) { demoStarting = false; return; }
+        fetch('/api/session/reset', { method: 'POST' }).then(startDemoScript);
+      } else startDemoScript();
+    }).catch(function () { demoStarting = false; demoStatus('⛔ Chạy thử dừng: mất kết nối server.'); });
+  }
+  function startDemoScript() {
+    demoStarting = false;
+    demoRunning = true;
+    document.getElementById('btn-demo-auto').style.display = 'none';
+    document.getElementById('btn-demo-stop').style.display = '';
+    var i = 0;
+    var step = function () {
+      if (!demoRunning) return;
+      if (i >= DEMO_SCRIPT.length) {
+        stopAutoDemo('✅ Chạy thử đã nạp xong ' + DEMO_SCRIPT.length + ' lượt — xem màn hình live vẽ dần.');
+        return;
+      }
+      var s = DEMO_SCRIPT[i];
+      i++;
+      demoStatus('▶ Chạy thử ' + i + '/' + DEMO_SCRIPT.length + ': ' + (s.name || 'Top 1') + ' (' + (s.kind === 'top1' ? 'quà lớn' : kindVi(s.kind)) + ')…');
+      fetch('/api/test/' + s.kind, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(s.name ? { name: s.name } : {}) })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          if (!j.success) { stopAutoDemo('⛔ Chạy thử dừng: ' + (j.message || 'cần bật chế độ thử.')); return; }
+          demoTimers.push(setTimeout(step, 1200));
+        }).catch(function () { stopAutoDemo('⛔ Chạy thử dừng: mất kết nối server.'); });
+    };
+    step();
+  }
+  function stopAutoDemo(msg) {
+    demoRunning = false;
+    demoStarting = false;
+    demoTimers.forEach(clearTimeout);
+    demoTimers = [];
+    document.getElementById('btn-demo-auto').style.display = '';
+    document.getElementById('btn-demo-stop').style.display = 'none';
+    demoStatus(msg || '⏹ Đã dừng chạy thử.');
+  }
+  function clearTestQueue() {
+    fetch('/api/test/clear-queue', { method: 'POST' });
+  }
+</script>
+</body>
+</html>
